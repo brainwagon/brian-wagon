@@ -1,0 +1,11 @@
+{
+  "name": "brian-wagon",
+  "private": true,
+  "description": "Brian Wagon character rig for p5.js",
+  "scripts": {
+    "export": "node export.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "^1.62.1"
+  }
+}

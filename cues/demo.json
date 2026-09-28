@@ -1,0 +1,24 @@
+{
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "duration": 24,
+  "seed": 7,
+  "shadows": false,
+  "rig": { "x": 420, "y": 940, "scale": 21.6, "facing": "right", "emotion": "neutral" },
+  "cues": [
+    { "t": 0.5, "lookAt": [1500, 300] },
+    { "t": 1.0, "moveTo": { "x": 1200, "seconds": 2.5 } },
+    { "t": 1.0, "lookAt": null },
+    { "t": 4.0, "emotion": "happy" },
+    { "t": 6.0, "emotion": "thinking" },
+    { "t": 8.0, "emotion": "confused" },
+    { "t": 10.0, "emotion": "excited" },
+    { "t": 12.0, "emotion": "celebrating" },
+    { "t": 14.5, "emotion": "fearful" },
+    { "t": 16.5, "emotion": "sad", "blend": 0.8 },
+    { "t": 18.5, "emotion": "sleepy", "blend": 1.2 },
+    { "t": 21.0, "emotion": "neutral" },
+    { "t": 21.0, "moveTo": { "x": 700, "seconds": 2.0 } }
+  ]
+}
