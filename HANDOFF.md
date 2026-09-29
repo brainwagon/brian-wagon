@@ -1,7 +1,7 @@
 # Brian Wagon — Handoff
 
-Handoff date: 2026-09-29. Everything below is committed (latest: `dab46c8`, 20 emotions),
-and the working tree was clean when this was written.
+Handoff date: 2026-09-29. Everything below is committed (rig work up to `e5b360a`, plus this
+handoff), and the working tree was clean when this was written.
 
 ## Current state
 - The rig, spec (revision 2), preview page and cue files all match each other.
@@ -10,7 +10,12 @@ and the working tree was clean when this was written.
   so regenerate it after any rig change.
 - A `python3 -m http.server 8123` may still be running from this session. If not, restart it
   (see "Running it").
-- Nothing is pending or half-done.
+- **Deliverable in progress: the "brainwagon" title animation.** `out/intro/intro.mp4` is 1920×1080
+  (16:9), 30 fps, 37 s, with chiptune music and sound effects, rendered from the current code.
+  Mark's feedback so far has been visual (letter gaps, boil, fade opacity, set dressing, tassels), all
+  addressed and committed. He has not yet given feedback on the audio, so **the score and effects are
+  the least-checked part**: they were only verified for level and clipping, never listened to.
+- Nothing is half-done in the code.
 
 ## What this is
 Brian Wagon is an animated avatar for explainer videos: a disembodied brain in a
@@ -26,7 +31,7 @@ he uses to gesture, reach and carry props.
 |---|---|
 | `character-spec.md` | Spec, **revision 2**. Matches the code |
 | `character-spec.v0.md` | Original one-page spec, kept for reference |
-| `brian-wagon.js` | The rig (about 1200 lines, no dependencies). `class BrianWagon`, exported as a global and as a CommonJS module |
+| `brian-wagon.js` | The rig (about 1600 lines, no dependencies). `class BrianWagon`, exported as a global and as a CommonJS module |
 | `index.html` | Interactive preview. Loads p5 from the jsDelivr CDN (`p5@1`), global mode. Defaults to 50% size on a grey background |
 | `render.html` | Headless render target used by the exporter. Loads only `brian-wagon.js` |
 | `export.mjs` | Renders a cue list to PNGs using Playwright in headless Chromium, plus an optional ffmpeg preview |
@@ -198,6 +203,16 @@ and arm in red; drift 0.3; no lettering on the wagon; he doesn't speak; usually 
 - **No Windows paths.** Nothing depends on Windows-side paths.
 
 ## Suggested next steps
+0. Get Mark's reaction to the intro (audio especially), then tune. Likely knobs:
+   - **Audio:** tempo, melody and mix in `tools/make-audio.py` (levels in the "master" block).
+   - **Length (37 s):** the three letter moves take the longest. Shorten pauses and `secs` values in
+     `tools/make-intro.mjs`, then regenerate the cue file and audio.
+   - **Set:** the floor reads a little like bricks (short staggered boards). Long planks or a lighter
+     colour is a small change in `_drawStageBack`.
+   - **Pincer:** the letters ride in the jaws rather than being visibly gripped, because a letter's
+     centre is a thin stroke.
+   After any change: `node tools/make-intro.mjs && python3 tools/make-audio.py cues/intro.json
+   out/intro/audio.wav && node export.mjs cues/intro.json --preview`.
 1. Look at the preview in a browser and tune by eye: jar tilt (`K` constants in
    `_physics`), suspension stiffness, the icon sizes and the pincer.
 2. Check the sparkle border at 20% frame height on the real background. If it still
