@@ -267,6 +267,8 @@
   // --------------------------------------------------------------------- rig
 
   class BrianWagon extends Painter {
+    get layerName() { return 'brian'; }   // brush layer this character paints in (see setStyle)
+
     constructor(opts = {}) {
       super();
       this.opts = Object.assign({
@@ -803,14 +805,7 @@
     draw(target, o = {}) {
       const ctx = resolveCtx(target);
       const x = o.x != null ? o.x : this.x, y = o.y != null ? o.y : this.y, s = o.scale != null ? o.scale : this.scale;
-      const P = this.p;
       this._step = Math.floor(this.t / this.opts.boilStep + 1e-6);
-
-      const lift = this._lift();
-      const shud = P.shudder * noise1(this.seed + 61, this.t * 30);
-      const jig = P.jiggle * 0.035 * Math.sin(TAU * 6 * this.t);
-      const fx = Math.sin((this._face * Math.PI) / 2);
-      const fxs = Math.abs(fx) < 0.03 ? (fx < 0 ? -0.03 : 0.03) : fx;
 
       const staged = this.env._stage && o.x == null && o.y == null && o.scale == null;
       this._fillN = 0;
@@ -819,7 +814,25 @@
       this._sceneM = ctx.getTransform(); this._sceneR = [x, y, s / this.scale];   // for the letter held between the jaws
       this._layer = 'letters';
       this.env._drawLetters(ctx, x, y, s / this.scale, this._gripped());
-      this._layer = 'brian';
+
+      this._drawRig(ctx, x, y, s);
+
+      this._layer = 'stage';
+      if (staged) this.env._drawStageFront(ctx);
+      if (this._bs && staged) this._bs.paper(ctx);
+      return this;
+    }
+
+    // Just the character (no stage, letters or paper grain), placed at (x, y) with scale s.  draw() calls this,
+    // and so does a Scene, which sets this._step and _sceneM/_sceneR first.
+    _drawRig(ctx, x, y, s) {
+      const P = this.p;
+      const lift = this._lift();
+      const shud = P.shudder * noise1(this.seed + 61, this.t * 30);
+      const jig = P.jiggle * 0.035 * Math.sin(TAU * 6 * this.t);
+      const fx = Math.sin((this._face * Math.PI) / 2);
+      const fxs = Math.abs(fx) < 0.03 ? (fx < 0 ? -0.03 : 0.03) : fx;
+      this._layer = this.layerName;
 
       ctx.save();
       ctx.translate(x, y);
@@ -852,10 +865,6 @@
       this._drawWorldProps(ctx);
       this._drawConfetti(ctx);
       ctx.restore();
-      this._layer = 'stage';
-      if (staged) this.env._drawStageFront(ctx);
-      if (this._bs && staged) this._bs.paper(ctx);
-      return this;
     }
 
     // Letters drawn between the jaws (in _drawArm) rather than behind the rig: the one being fetched or
