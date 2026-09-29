@@ -41,7 +41,7 @@ he uses to gesture, reach and carry props.
 | `tools/make-intro.mjs` | Director script: simulates the rig headlessly and writes `cues/intro.json`, placing cues and sound effects on what actually happens |
 | `tools/make-audio.py` | Chiptune score + sound effects (numpy/scipy, 8-bit quantised), driven by the cue file's `marks`, `sfx` and `fade` |
 | `cues/pincer.json` | 16 s demo of reach, grab, carry and release with all four props. Rig at scale 40 |
-| `brian_wagon_sketch.png` | Mark's concept sketch. Adopted in part (see "Design decisions") |
+| `sketches/brian_wagon_sketch.png` | Mark's concept sketch. Adopted in part (see "Design decisions") |
 | `out/` | Rendered frames. **Ignored and untracked**; regenerate with `node export.mjs cues/demo.json` or `cues/emotions.json` (add `--preview` for an MP4) |
 
 ## Running it

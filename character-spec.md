@@ -1,7 +1,7 @@
 # Brian Wagon — Character Spec (p5.js)
 
 Revision 2. The original spec is kept in `character-spec.v0.md`. Revision 2 folds in
-the concept sketch (`brian_wagon_sketch.png`), the interview of 2026-09-29, and the
+the concept sketch (`sketches/brian_wagon_sketch.png`), the interview of 2026-09-29, and the
 drift between revision 1 and the code.
 
 ## Identity
