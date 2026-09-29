@@ -115,6 +115,17 @@ suspension.
 | Celebrating | Wide, clapping | High and extended |
 | Fearful | Clenched, trembling | Pulled in |
 | Sleepy | Limp, a fifth open | Droops low |
+| Angry | Clenched, faint grinding | Low, tense |
+| Surprised | Wide open | Raised and extended |
+| Curious | About 40% open, slow flutter | Raised and extended |
+| Suspicious | Nearly closed | Pulled in |
+| Bored | Nearly closed | Droops low and shortens |
+| Embarrassed | Small fidgeting | Slightly low, pulled in |
+| Proud | Half open | Raised and extended |
+| Smug | A third open | Slightly raised |
+| Worried | Nearly closed, faint tremble | Slightly low, pulled in |
+| Disgusted | Pinched | Held out and extended |
+| Love | A third open, gentle flutter | Slightly raised |
 
 - **Reach.** `reach(x, y)` points the arm at a scene point and extends it until the
   jaws are there. `reach(null)` relaxes it.
@@ -140,7 +151,7 @@ suspension.
 - **Blink.** Automatic every 3–6 s in most states, and it can also be triggered.
 
 ## Emotions
-There are 9 states. Changing state blends every parameter over a configurable time
+There are 20 states: the original nine plus eleven added in revision 2. Changing state blends every parameter over a configurable time
 (default 0.3 s). Each state has an intensity from 0 to 1.
 
 | State | Lids | Pupils / gaze | Mouth | Brain / fluid | Wagon | Overlay |
@@ -154,13 +165,24 @@ There are 9 states. Changing state blends every parameter over a configurable ti
 | **Celebrating** | Closed happy crescents | (Hidden) | Big open grin | Surge of bubbles, big slosh | Hop (both wheels leave the ground) | **Confetti burst** (event), sparkles |
 | **Fearful** | Retracted, eyes wide | Tiny, trembling | Zigzag | Pulls back and down in the jar (about 0.3), trembles | Shudder | Sweat drop |
 | **Sleepy** | Heavy (70%+), slow blinks, drift to closed | Down | Hidden, or a small "o" when fully asleep | Sinks about 0.45, very slow bob, one slow bubble per breath | Still | Drifting "Z z z" |
+| **Angry** | Upper lids slanted down toward the middle, slightly raised lower lids | Small pupils, steady on the target | Gritted frown | Bobs briskly and shakes, simmering bubbles | Trembling jiggle | Red anger mark |
+| **Surprised** | Retracted, eyes very wide | Tiny pupils | Open "o" | A jolt on entry, leans back, stream of bubbles | Still | "!" |
+| **Curious** | One upper lid raised | Up and to the side, drifting | Small open smile | Head tilts, gentle sway | Still | None |
+| **Suspicious** | Half-lidded, slanted in, raised lower lids | Sideways, steady | Flat line pushed to one side | Leans back, very slow bob | Still | None |
+| **Bored** | Heavy (about 50%), slow blinks | Drifting, slightly down | Flat, slightly down | Sinks a little, very slow bob | Still | None |
+| **Embarrassed** | Slightly lowered | Down and away from the target, restless | Wobbly small smile | Sinks about 0.25, gentle sway | Still | Blush ovals on the cheeks |
+| **Proud** | Slightly lowered, raised lower lids | Steady, slightly up | Small smile | Sits high in the jar | Still | None |
+| **Smug** | Half-lidded, raised lower lids | Steady, to the side | One-sided smirk | Slow bob, faint sway | Still | None |
+| **Worried** | Upper lids sloped up in the middle | Restless darts, trembling | Wavy, slightly down | Sinks a little, faint tremble | Slight shudder | Sweat drop |
+| **Disgusted** | Squinting, slanted in | To the side, slightly down | Frown pulled down at one side | Tilts and leans away from the target | Still | None |
+| **Love** | Soft, raised lower lids, big pupils | Soft, following the target | Small smile | Bouncy bob and sway | Small bounce | Floating hearts |
 
 - **Sustained states vs events.**
   - Excited is a sustained state.
   - Celebrating fires a one-shot confetti burst and hop on entry, then holds a happy,
     lightly bubbling loop.
   - Confetti and hop can also be triggered on their own.
-- **Overlays** are hand-drawn vector shapes, drawn large (about twice the revision 1 size) so they read at small sizes, not Unicode emoji. They follow the
+- **Overlays** (sparkles, tear, "?", "!", thought dots, sweat, Zzz, and the new anger mark, blush and hearts) are hand-drawn vector shapes, drawn large (about twice the revision 1 size) so they read at small sizes, not Unicode emoji. They follow the
   brain's position, not the face's. They boil like everything else. Each overlay
   animates in (pop or drift) and animates out when the state ends. Each glyph has a
   white sticker backing (on by default) so it reads on any background.

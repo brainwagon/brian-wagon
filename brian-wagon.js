@@ -89,6 +89,7 @@
     white: col('#FFFFFF'), pupil: col('#000000'), mouth: col('#1B2B3A'), ink: col('#1B2B3A'),
     bubble: col('#FFFFFF', 0.6), drop: col('#8EC9F0'), gold: col('#F2C230'),
     shadow: col('#000000', 0.22),
+    red: col('#D93B30'), pink: col('#EF6F9C'), blush: col('#EF6F9C', 0.7),
     teal: col('#2BB3A3'), orange: col('#F28C28'), bulb: col('#FFE680'),
   };
   const CONFETTI = ['#F2C230', '#2BB3A3', '#EF6F9C', '#F28C28', '#5B8DEF', '#FFFFFF'].map((h) => col(h).css);
@@ -271,6 +272,20 @@
     sparkle: (g) => [sparkle(0, 0, 0.5 + g * 1.4)],
     drop: (g) => [teardrop(0, 0, 0.5 + g * 1.3)],
     dot: (g) => [circle(0, 0, 0.5 + g)],
+    heart: () => {
+      const p = [];
+      for (let i = 0; i < 48; i++) {
+        const t = (i / 48) * TAU;
+        p.push([(16 * Math.pow(Math.sin(t), 3)) / 34,
+          (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t) + 2.5) / 34]);
+      }
+      return [p];
+    },
+    // Manga anger mark: four curved brackets around a gap.
+    anger: () => [[1, 1], [-1, 1], [-1, -1], [1, -1]].map(([sx, sy]) => {
+      const a0 = Math.atan2(-sy, -sx) - Math.PI / 4;
+      return ribbon(arcPts(sx * 0.3, sy * 0.3, 0.26, a0, a0 + Math.PI / 2, 0.05), 0.14);
+    }),
   };
 
   // ------------------------------------------------------------------ emotions
@@ -286,7 +301,9 @@
     bubbleRate: 0.4,
     bounce: 0, bounceSpeed: 1.6, jiggle: 0, shudder: 0,
     jaw: 0.25, jawFlap: 0, jawRate: 2, armLift: 0, armExt: 0,
+    mouthTilt: 0, tilt: 0,
     ovSparkle: 0, ovTear: 0, ovQuestion: 0, ovExclaim: 0, ovThought: 0, ovSweat: 0, ovZzz: 0,
+    ovAnger: 0, ovBlush: 0, ovHeart: 0,
   };
 
   const PRESETS = {
@@ -334,6 +351,62 @@
       autoBlink: 0.4, blinkDur: 0.7, mouthVis: 0.6, mouthW: 0.3, open: 0.55,
       bob: 0.35, bobSpeed: 0.08, sinkY: -0.45, bubbleRate: 0.15, ovZzz: 1,
       jaw: 0.2, armLift: -0.6, armExt: -0.1,
+    },
+    angry: {
+      lidUp: 0.32, lidTilt: -0.4, lidLo: 0.1, pupil: 0.32, gazeFollow: 0.9, dartRate: 0.05, dartAmp: 0.05, autoBlink: 0.5,
+      mouthVis: 1, curve: -0.6, open: 0.1, zig: 0.4, bob: 0.5, bobSpeed: 0.5, jiggle: 0.4, bubbleRate: 2, ovAnger: 1,
+      jaw: 0, jawFlap: 0.05, jawRate: 10, armLift: -0.25, armExt: -0.1,
+    },
+    surprised: {
+      lidUp: 0, eyeScale: 1.25, pupil: 0.18, dartRate: 0.4, dartAmp: 0.1, autoBlink: 0.3,
+      mouthVis: 1, mouthW: 0.4, open: 1, bob: 0.3, bobSpeed: 0.3, backX: -0.25, bubbleRate: 3, ovExclaim: 1,
+      jaw: 0.95, armLift: 0.4, armExt: 0.3,
+    },
+    curious: {
+      lidUp: 0.1, lidAsym: 0.1, eyeScale: 1.08, pupil: 0.45, gazeFollow: 0.4, gazeX: 0.45, gazeY: 0.3, dartRate: 0.5, dartAmp: 0.2,
+      mouthVis: 0.8, mouthW: 0.6, curve: 0.2, open: 0.35, tilt: 0.14, sway: 0.05, swaySpeed: 0.2,
+      bob: 0.6, bobSpeed: 0.3, bubbleRate: 0.6, jaw: 0.4, jawFlap: 0.1, jawRate: 1, armLift: 0.4, armExt: 0.3,
+    },
+    suspicious: {
+      lidUp: 0.48, lidAsym: 0.1, lidLo: 0.25, lidTilt: -0.15, pupil: 0.35, gazeFollow: 0.1, gazeX: 0.7, gazeY: -0.05,
+      dartRate: 0.1, dartAmp: 0.05, autoBlink: 0.4, blinkDur: 0.25, mouthVis: 0.8, mouthW: 0.7, curve: -0.05, skew: 0.6,
+      bob: 0.3, bobSpeed: 0.12, backX: -0.2, sway: 0.04, jaw: 0.1, armLift: -0.1, armExt: -0.4,
+    },
+    bored: {
+      lidUp: 0.5, lidDroop: 0.1, gazeFollow: 0.7, gazeX: 0.2, gazeY: -0.1, dartRate: 0.1, autoBlink: 0.5, blinkDur: 0.35,
+      mouthVis: 0.7, mouthW: 0.7, curve: -0.1, bob: 0.35, bobSpeed: 0.1, sinkY: -0.15, bubbleRate: 0.2,
+      jaw: 0.05, armLift: -0.5, armExt: -0.2,
+    },
+    embarrassed: {
+      lidUp: 0.18, lidLo: 0.1, pupil: 0.45, gazeFollow: 0.2, gazeX: -0.45, gazeY: -0.5, dartRate: 0.5, dartAmp: 0.2,
+      mouthVis: 1, mouthW: 0.7, curve: 0.3, wave: 0.6, bob: 0.5, bobSpeed: 0.3, sinkY: -0.25, sway: 0.05,
+      bubbleRate: 0.6, ovBlush: 1, jaw: 0.15, jawFlap: 0.1, jawRate: 1.2, armLift: -0.1, armExt: -0.3,
+    },
+    proud: {
+      lidUp: 0.22, lidLo: 0.12, pupil: 0.42, gazeFollow: 0.6, gazeY: 0.1, dartRate: 0.1,
+      mouthVis: 1, curve: 0.6, open: 0.05, mouthW: 0.9, bob: 0.6, bobSpeed: 0.2, sinkY: 0.2, bubbleRate: 0.8,
+      jaw: 0.55, armLift: 0.45, armExt: 0.4,
+    },
+    smug: {
+      lidUp: 0.35, lidLo: 0.15, lidAsym: 0.05, pupil: 0.4, gazeFollow: 0.5, gazeX: 0.2, dartRate: 0.08, dartAmp: 0.05,
+      mouthVis: 1, mouthW: 0.9, curve: 0.35, mouthTilt: 0.5, bob: 0.4, bobSpeed: 0.15, sway: 0.03, bubbleRate: 0.3,
+      jaw: 0.3, armLift: 0.1,
+    },
+    worried: {
+      lidUp: 0.12, lidTilt: 0.35, lidLo: 0.05, pupil: 0.4, gazeFollow: 0.5, gazeY: 0.1, dartRate: 1.4, dartAmp: 0.3, tremble: 0.05,
+      mouthVis: 1, mouthW: 0.8, curve: -0.2, wave: 1, open: 0.1, bob: 0.4, bobSpeed: 0.3, sinkY: -0.15,
+      brainTremble: 0.012, shudder: 0.008, bubbleRate: 0.6, ovSweat: 1,
+      jaw: 0.1, jawFlap: 0.05, jawRate: 8, armLift: -0.1, armExt: -0.2,
+    },
+    disgusted: {
+      lidUp: 0.4, lidLo: 0.3, lidTilt: -0.1, lidAsym: 0.1, pupil: 0.38, gazeFollow: 0.3, gazeX: 0.5, gazeY: -0.1,
+      mouthVis: 1, mouthW: 0.9, curve: -0.7, mouthTilt: -0.6, wave: 0.4, open: 0.1, tilt: -0.14, backX: -0.4,
+      bob: 0.3, bobSpeed: 0.2, sinkY: -0.1, bubbleRate: 0.3, jaw: 0.1, armLift: 0.3, armExt: 0.5,
+    },
+    love: {
+      lidUp: 0.05, lidLo: 0.3, eyeScale: 1.1, pupil: 0.55, gazeFollow: 0.5, dartRate: 0.2, dartAmp: 0.1,
+      mouthVis: 1, curve: 0.6, open: 0.15, bob: 0.9, bobSpeed: 0.35, bounce: 0.05, bounceSpeed: 1.4, sway: 0.08, swaySpeed: 0.3,
+      bubbleRate: 1.5, ovHeart: 1, jaw: 0.35, jawFlap: 0.1, jawRate: 1.2, armLift: 0.15,
     },
   };
 
@@ -455,6 +528,7 @@
       if (name === 'celebrating' && this.emotion !== 'celebrating') {
         this.trigger('confetti'); this.trigger('hop'); this.trigger('bubbles');
       }
+      if (name === 'surprised' && this.emotion !== 'surprised' && blend > 0) { this._B.vy += 3; this._K.vr += 0.8; }
       this.emotion = name;
       this.intensity = intensity;
       return this;
@@ -690,7 +764,7 @@
       B.x += h * B.vx; B.y += h * B.vy;
       if (Math.abs(B.x) > G.brainX) { B.x = Math.sign(B.x) * G.brainX; B.vx = 0; }
       if (B.y < G.brainYLo || B.y > G.brainYHi) { B.y = clamp(B.y, G.brainYLo, G.brainYHi); B.vy = 0; }
-      const tr = P.sway * Math.sin(TAU * this._swayPh) - aL * 0.015;
+      const tr = P.sway * Math.sin(TAU * this._swayPh) + P.tilt - aL * 0.015;
       B.vr += h * (-9.9 * (B.r - tr) - 2.5 * B.vr);
       B.r = clamp(B.r + h * B.vr, -0.35, 0.35);
 
@@ -995,6 +1069,10 @@
       ctx.rotate(B.r * 0.8);
       ctx.scale(G.faceK, G.faceK);
       this._drawEyes(ctx);
+      if (P.ovBlush > 0.01) {
+        const k = clamp(P.ovBlush, 0, 1);
+        for (const sx of [-1, 1]) this._shape(ctx, ellipse(sx * 0.95, -0.5, 0.24 * k, 0.13 * k, 24), 'blush' + sx, PAL.blush, false);
+      }
       const mouth = this._mouthPts();
       if (mouth) {
         ctx.save();
@@ -1085,6 +1163,7 @@
         const u = -1 + (2 * i) / n, x = u * w;
         const e = Math.sqrt(Math.max(0, 1 - Math.pow(u, 6)));
         let yc = P.curve * w * 0.55 * (u * u - 0.4);
+        yc += P.mouthTilt * w * 0.5 * u;
         yc += P.wave * 0.05 * Math.sin(u * 2.5 * Math.PI);
         yc += P.zig * 0.06 * (2 / Math.PI) * Math.asin(Math.sin(u * 3 * Math.PI));
         const th = e * (0.065 + P.open * 0.3 * (1 - u * u)) * (0.5 + 0.5 * vis);
@@ -1145,6 +1224,16 @@
       if (P.ovSweat > 0.01) {
         const u = (t / 1.8) % 1;
         put('sw', GLYPH.drop, PAL.drop, 4.2, 8.4 - 0.6 * u, 0.9, 0, P.ovSweat, Math.min(1, (1 - u) / 0.25));
+      }
+      if (P.ovAnger > 0.01) {
+        put('an', GLYPH.anger, PAL.red, 3.6, 9.7, 1.5 * (1 + 0.1 * Math.sin(TAU * 3 * t)), 0.1, P.ovAnger);
+      }
+      if (P.ovHeart > 0.01) {
+        for (let i = 0; i < 3; i++) {
+          const u = (t * 0.3 + i / 3) % 1;
+          const a = Math.min(1, u / 0.15) * Math.min(1, (1 - u) / 0.3);
+          put('hr' + i, GLYPH.heart, PAL.pink, [-1.8, 0.2, 2.0][i] + 0.3 * Math.sin(u * TAU + i * 2), 9.5 + u * 2.2, 1 + 0.5 * u, 0.15 * Math.sin(u * TAU * 2 + i), P.ovHeart, a);
+        }
       }
       if (P.ovZzz > 0.01) {
         for (let i = 0; i < 3; i++) {

@@ -63,7 +63,7 @@
 
     <h2>Output</h2>
     <div class="row"><button id="pause">Pause</button><button id="step">Step</button><button id="save">Save PNG (1080p)</button></div>
-    <p class="hint">Click the stage to drive there. Keys: 1–9 emotions, ←/→ face, space pause, B blink, H hop, C confetti, S save, P cycle props, R release.</p>
+    <p class="hint">Click the stage to drive there. Keys: 1–9 the first nine emotions (buttons for the rest), ←/→ face, space pause, B blink, H hop, C confetti, S save, P cycle props, R release.</p>
   </aside>
 </main>
 <script>
@@ -90,7 +90,7 @@
 
     for (const [i, e] of BrianWagon.EMOTIONS.entries()) {
       const btn = document.createElement('button');
-      btn.textContent = `${i + 1} ${e}`;
+      btn.textContent = i < 9 ? `${i + 1} ${e}` : e;
       btn.dataset.emotion = e;
       btn.onclick = () => setEmotion(e);
       $('emotions').append(btn);
