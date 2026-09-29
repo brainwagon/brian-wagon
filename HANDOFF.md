@@ -1,7 +1,16 @@
 # Brian Wagon — Handoff
 
-Handoff date: 2026-09-29. Everything below is in commits up to `098a010`. `HANDOFF.md`
-itself is untracked.
+Handoff date: 2026-09-29. Everything below is committed (latest: `dab46c8`, 20 emotions),
+and the working tree was clean when this was written.
+
+## Current state
+- The rig, spec (revision 2), preview page and cue files all match each other.
+- `out/demo/` (from `cues/demo.json`) and `out/emotions/` (from `cues/emotions.json`, all 20
+  emotions, plus `preview.mp4` on grey) were rendered from the current code. `out/` is ignored,
+  so regenerate it after any rig change.
+- A `python3 -m http.server 8123` may still be running from this session. If not, restart it
+  (see "Running it").
+- Nothing is pending or half-done.
 
 ## What this is
 Brian Wagon is an animated avatar for explainer videos: a disembodied brain in a
@@ -25,7 +34,7 @@ he uses to gesture, reach and carry props.
 | `cues/emotions.json` | 50 s, all 20 emotions at 2.5 s each. Rig at scale 40, centred |
 | `cues/pincer.json` | 16 s demo of reach, grab, carry and release with all four props. Rig at scale 40 |
 | `brian_wagon_sketch.png` | Mark's concept sketch. Adopted in part (see "Design decisions") |
-| `out/` | Rendered frames. **Ignored and untracked**; regenerate with `node export.mjs cues/demo.json` |
+| `out/` | Rendered frames. **Ignored and untracked**; regenerate with `node export.mjs cues/demo.json` or `cues/emotions.json` (add `--preview` for an MP4) |
 
 ## Running it
 - **Preview:** `python3 -m http.server 8123` in this directory, then open
