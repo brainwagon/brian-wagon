@@ -33,7 +33,8 @@
     headRx: 1.5, headRy: 1.58,
     pelvisX: -1.0,
     baseLean: 47 * DEG,        // forward stoop of the torso from vertical
-    kneeFlex: 0.2, swingFlex: 0.75, hipAmp: 0.42,
+    kneeFlex: 0.2, swingFlex: 0.75,
+    reach: 1.75,               // half a stride: how far the foot travels forward/back of the hip when walking
   };
   const LEG_LEN = G.thigh + G.shin;
 
@@ -162,7 +163,7 @@
 
     // Distance walked drives the gait, so the stance foot doesn't slide.
     _onMove(du) {
-      const A = Math.max(0.08, G.hipAmp * this._gaitAmt), stride = 4 * LEG_LEN * Math.sin(A);
+      const stride = 4 * Math.max(0.3, G.reach * this._gaitAmt);   // distance per gait cycle (two steps)
       this._phi += (du * (this._face < 0 ? -1 : 1)) / stride;
     }
 
@@ -178,7 +179,7 @@
       this._gaitAmt += (gt - this._gaitAmt) * Math.min(1, dt * 8);
       const g = this._gaitAmt;
       // Heel strikes kick the torso and head.
-      const st = Math.floor(this._phi * 2 + 0.25);
+      const st = Math.floor(this._phi * 2 - 0.5);   // a foot lands at phi = 0.25 and 0.75
       if (st !== this._stepN) { this._stepN = st; this._T.v += 0.5 * g; this._Hd.v -= 0.8 * g; }
       // Head pitch follows the gaze a little (looking up lifts the chin).
       this._lookPitch += ((this._pupilT[1][1] || 0) * 0.22 - this._lookPitch) * Math.min(1, dt * 4);
@@ -264,11 +265,20 @@
       const lean = G.baseLean + P.slump * 0.32 + this._T.r + 0.012 * Math.sin(TAU * 0.25 * t) + 0.5 * P.sway * Math.sin(TAU * this._swayPh);
 
       // Legs, relative to the hip, then the pelvis is dropped so the lower foot just touches the ground.
+      // The foot's horizontal position is driven directly: it moves back at exactly the body's speed while planted
+      // (so it doesn't slide) and swings forward in an arc, then the hip angle is solved to put the ankle there.
       const legs = [0, 1].map((i) => {
-        const th = TAU * (phi + 0.5 * i), swing = Math.cos(th);
-        const t1 = 0.1 + (i ? 0.13 : -0.13) * (1 - g) + G.hipAmp * g * Math.sin(th);
+        const u = (((phi + 0.5 * i) % 1) + 1) % 1, swing = Math.cos(TAU * u);
+        const hx = G.reach * g;
+        const fx = (u >= 0.25 && u < 0.75 ? hx * (1 - 4 * (u - 0.25)) : -hx * Math.cos(Math.PI * (((u - 0.75 + 1) % 1) / 0.5)))
+          + (i ? 0.35 : -0.35) * (1 - g) + 0.2;
         const kb = G.kneeFlex + G.swingFlex * g * Math.max(0, swing);
         const fa = 0.4 * g * Math.max(0, swing);              // toe lifts while the leg swings through
+        let t1 = Math.asin(clamp(fx / LEG_LEN, -0.9, 0.9));
+        for (let n = 0; n < 4; n++) {
+          const f = G.thigh * Math.sin(t1) + G.shin * Math.sin(t1 - kb) - fx, d = G.thigh * Math.cos(t1) + G.shin * Math.cos(t1 - kb);
+          t1 -= f / (d || 1);
+        }
         const k = [G.thigh * Math.sin(t1), -G.thigh * Math.cos(t1)], t2 = t1 - kb;
         const a = [k[0] + G.shin * Math.sin(t2), k[1] - G.shin * Math.cos(t2)];
         let low = Infinity;
