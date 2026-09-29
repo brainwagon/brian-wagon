@@ -1005,8 +1005,25 @@
     layer: 'brian',                       // brush layer name (see setStyle)
     emotions: BrianWagon.EMOTIONS,
     triggers: BrianWagon.TRIGGERS,
-    gestures: [{ id: 'wave', label: 'Wave', cue: { wave: true } }],
+    gestures: [{ id: 'wave', label: 'Wave on', cue: { wave: true } }, { id: 'waveOff', label: 'Wave off', cue: { wave: false } }],
     defaults: { x: 0.35, y: 0.85, scale: 0.02, facing: 'right' },   // fractions of frame width/height/height
+    // Extra controls for the preview page (see index.html): buttons send a cue, a toggle calls a method with the
+    // mouse position while on, a slider calls a method with its value (null when its 'auto' box is ticked).
+    panels: [{
+      title: 'Pincer',
+      controls: [
+        { type: 'buttons', items: BrianWagon.PROPS.map((p) => ({ label: p, cue: { grab: p } })) },
+        { type: 'buttons', items: [{ label: 'Release', cue: { release: true } }] },
+        { type: 'toggle', label: 'Reach mouse', title: 'Arm reaches for the mouse', method: 'reach' },
+        { type: 'slider', label: 'Jaw', method: 'jaw', min: 0, max: 1, step: 0.05, value: 0.25, auto: 'Jaw follows emotion' },
+      ],
+    }],
+    // Keys beyond the shared ones (digits = emotions, arrows = facing, space = pause, s = save PNG).
+    keys: {
+      b: { trigger: 'blink' }, h: { trigger: 'hop' }, c: { trigger: 'confetti' },
+      r: { cue: { release: true } },
+      p: { cycle: BrianWagon.PROPS.map((p) => ({ grab: p })) },
+    },
   };
   RigRegistry.register(BrianWagon);
 

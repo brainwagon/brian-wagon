@@ -510,8 +510,16 @@
     layer: 'bluemark',
     emotions: Bluemark.EMOTIONS,
     triggers: Bluemark.TRIGGERS,
-    gestures: [{ id: 'wave', label: 'Wave', cue: { wave: true } }],
+    gestures: [],
     defaults: { x: 0.65, y: 0.85, scale: 0.02, facing: 'left' },
+    panels: [{
+      title: 'Gestures',
+      controls: [
+        { type: 'buttons', items: [{ label: 'Wave on', cue: { wave: true } }, { label: 'Wave off', cue: { wave: false } }] },
+        { type: 'toggle', label: 'Point at mouse', title: 'The near arm points at the mouse', method: 'point' },
+      ],
+    }],
+    keys: { b: { trigger: 'blink' }, h: { trigger: 'hop' }, c: { trigger: 'chomp' }, t: { trigger: 'stagger' } },
   };
   RigRegistry.register(Bluemark);
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Brian Wagon</title>
+<title>Character preview</title>
 <script src="https://cdn.jsdelivr.net/npm/p5@1/lib/p5.min.js"></script>
 <script src="manifest.js"></script>
 <style>
@@ -24,32 +24,32 @@
   .row { display: flex; gap: 4px; flex-wrap: wrap; }
   .hint { color: #6b6558; font-size: 12px; margin-top: 10px; }
   output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+  .hidden { display: none; }
+  select { font: inherit; }
 </style>
 </head>
 <body>
 <main>
   <div id="stage"></div>
   <aside>
+    <h2>Character</h2>
+    <label>Show <select id="char"></select></label>
+    <div class="row" id="ctl" title="Which character the controls and keys drive"></div>
+
     <h2>Emotion</h2>
     <div class="grid" id="emotions"></div>
     <label>Intensity <input id="intensity" type="range" min="0" max="1" step="0.05" value="1"><output id="intensityOut">1</output></label>
     <label>Blend (s) <input id="blend" type="range" min="0" max="2" step="0.05" value="0.3"><output id="blendOut">0.3</output></label>
 
     <h2>Triggers</h2>
-    <div class="row">
-      <button data-trigger="blink">Blink</button><button data-trigger="hop">Hop</button>
-      <button data-trigger="confetti">Confetti</button><button data-trigger="bubbles">Bubbles</button>
-    </div>
+    <div class="row" id="triggers"></div>
 
-    <h2>Pincer</h2>
-    <div class="row" id="props"></div>
-    <div class="row"><button id="release">Release</button><button id="reachBtn" title="Arm reaches for the mouse">Reach mouse</button></div>
-    <label>Jaw <input id="jaw" type="range" min="0" max="1" step="0.05" value="0.25"><output id="jawOut">auto</output></label>
-    <label><input id="jawAuto" type="checkbox" checked> Jaw follows emotion</label>
+    <div id="panels"></div>
 
     <h2>Motion</h2>
     <div class="row"><button id="faceL">◀ Face</button><button id="faceR">Face ▶</button><button id="center">Centre</button></div>
     <label><input id="follow" type="checkbox" checked> Eyes follow mouse</label>
+    <label id="lookEachRow" class="hidden"><input id="lookEach" type="checkbox"> Look at each other</label>
 
     <h2>Look</h2>
     <label>Size <input id="size" type="range" min="8" max="90" step="1" value="50"><output id="sizeOut">50%</output></label>
@@ -64,124 +64,201 @@
 
     <h2>Output</h2>
     <div class="row"><button id="pause">Pause</button><button id="step">Step</button><button id="save">Save PNG (1080p)</button></div>
-    <p class="hint">Click the stage to drive there. Keys: 1–9 the first nine emotions (buttons for the rest), ←/→ face, space pause, B blink, H hop, C confetti, S save, P cycle props, R release.</p>
+    <p class="hint" id="hint"></p>
   </aside>
 </main>
 <script>
+  // Everything character-specific comes from each class's static META (see core/registry.js and
+  // docs/adding-a-character.md): the selector, emotion buttons, triggers, gesture buttons, extra panels and keys.
   const W = 960, H = 540, FPS = 30;
-  let propIx = -1;
-  let b, paused = false, stepOnce = false, reaching = false;
+  let scene, curId, paused = false, stepOnce = false;
+  let mouseMethod = null;          // a rig method being driven by the mouse ('reach', 'point', ...)
+  const cycles = {};               // key -> index into a cycling cue list
   const $ = (id) => document.getElementById(id);
-
-  function makeRig(seed) {
-    const old = b;
-    b = new BrianWagon({
-      seed, x: old ? old.x : W * 0.35, y: H * 0.88, scale: sizeToScale(),
-      facing: old ? old.facing : 'right', emotion: old ? old.emotion : 'neutral',
-      drift: +$('drift').value, boil: +$('boil').value, shadows: $('shadows').checked,
-    });
-    if ($('brush').checked) b.setStyle('brush');
-  }
+  const cur = () => scene.get(curId);
+  const META = (id) => RigRegistry.get(id).META;
   const sizeToScale = () => (+$('size').value / 100) * H / 10;
+
+  // The characters shown: one, or every registered one.
+  function shownIds() { const v = $('char').value; return v === '*' ? RigRegistry.ids() : [v]; }
+
+  function makeScene(seed) {
+    const old = scene ? Object.fromEntries(scene.entries.map((e) => [e.id, e.rig])) : {};
+    const ids = shownIds();
+    scene = RigScene.Scene.fromSpec({
+      width: W, height: H, seed, shadows: $('shadows').checked,
+      options: { drift: +$('drift').value, boil: +$('boil').value },
+      rigs: ids.map((id) => {
+        const o = old[id];
+        return {
+          id, type: id, y: H * 0.88, scale: sizeToScale(),
+          ...(o ? { x: o.x, facing: o.facing, emotion: o.emotion } : { x: META(id).defaults.x * W }),
+        };
+      }),
+    });
+    if ($('brush').checked) scene.setStyle('brush');
+    curId = ids.includes(curId) ? curId : ids[0];
+    $('lookEachRow').classList.toggle('hidden', ids.length < 2);
+    buildControls();
+  }
+
+  // (Re)build every control that depends on the selected character.
+  function buildControls() {
+    const m = META(curId), rig = cur();
+    if (mouseMethod) { try { rig[mouseMethod](null); } catch (e) { /* not on this character */ } }
+    mouseMethod = null;
+    // which character the controls drive
+    $('ctl').replaceChildren(...(scene.entries.length < 2 ? [] : scene.entries.map((e) => {
+      const btn = document.createElement('button');
+      btn.textContent = META(e.id).label; btn.classList.toggle('on', e.id === curId);
+      btn.onclick = () => { curId = e.id; buildControls(); };
+      return btn;
+    })));
+    // emotions
+    $('emotions').replaceChildren(...m.emotions.map((e, i) => {
+      const btn = document.createElement('button');
+      btn.textContent = i < 9 ? `${i + 1} ${e}` : e; btn.dataset.emotion = e; btn.onclick = () => setEmotion(e);
+      return btn;
+    }));
+    markEmotion();
+    // triggers and gesture buttons
+    const tr = m.triggers.map((t) => btn(t[0].toUpperCase() + t.slice(1), () => cur().trigger(t)));
+    const gs = (m.gestures || []).map((g) => btn(g.label, () => cur().cue(g.cue)));
+    $('triggers').replaceChildren(...tr, ...gs);
+    // extra panels
+    $('panels').replaceChildren(...(m.panels || []).flatMap((p) => [heading(p.title), ...p.controls.map(control)]));
+    $('hint').textContent = 'Click the stage to drive there. Keys: 1–9 the first nine emotions (buttons for the rest), ←/→ face, space pause, S save'
+      + Object.entries(m.keys || {}).map(([k, v]) => `, ${k.toUpperCase()} ${v.trigger || (v.cycle ? 'cycle' : Object.keys(v.cue || {})[0])}`).join('') + '.';
+  }
+
+  function btn(label, fn, title) { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; if (title) b.title = title; return b; }
+  function heading(t) { const h = document.createElement('h2'); h.textContent = t; return h; }
+  function control(c) {
+    const box = document.createElement('div');
+    if (c.type === 'buttons') {
+      box.className = 'row';
+      box.append(...c.items.map((it) => btn(it.label, () => cur().cue(it.cue))));
+    } else if (c.type === 'toggle') {
+      box.className = 'row';
+      const b = btn(c.label, () => {
+        const on = mouseMethod !== c.method;
+        if (mouseMethod) cur()[mouseMethod](null);
+        mouseMethod = on ? c.method : null;
+        b.classList.toggle('on', on);
+      }, c.title);
+      box.append(b);
+    } else if (c.type === 'slider') {
+      const lab = document.createElement('label'), out = document.createElement('output');
+      const r = Object.assign(document.createElement('input'), { type: 'range', min: c.min, max: c.max, step: c.step, value: c.value });
+      out.textContent = c.auto ? 'auto' : c.value;
+      lab.append(c.label + ' ', r, out);
+      box.append(lab);
+      let auto = null;
+      if (c.auto) {
+        const l2 = document.createElement('label');
+        auto = Object.assign(document.createElement('input'), { type: 'checkbox', checked: true });
+        l2.append(auto, ' ' + c.auto);
+        box.append(l2);
+        auto.onchange = () => { if (auto.checked) { cur()[c.method](null); out.textContent = 'auto'; } else cur()[c.method](+r.value); };
+      }
+      r.oninput = () => { if (auto) auto.checked = false; out.textContent = r.value; cur()[c.method](+r.value); };
+    }
+    return box;
+  }
+
+  function setEmotion(e) {
+    cur().setEmotion(e, { intensity: +$('intensity').value, blend: +$('blend').value });
+    markEmotion();
+  }
+  function markEmotion() {
+    document.querySelectorAll('[data-emotion]').forEach((el) => el.classList.toggle('on', el.dataset.emotion === cur().emotion));
+  }
+  function togglePause() { paused = !paused; $('pause').classList.toggle('on', paused); }
 
   function setup() {
     createCanvas(W, H).parent('stage');
     frameRate(FPS);
     $('stage').querySelector('canvas').classList.add('grey');
-    makeRig(+$('seed').value);
+    for (const C of RigRegistry.list()) $('char').append(new Option(C.META.label, C.META.id));
+    if (RigRegistry.list().length > 1) $('char').append(new Option('Both', '*'));
+    makeScene(+$('seed').value);
 
-    for (const [i, e] of BrianWagon.EMOTIONS.entries()) {
-      const btn = document.createElement('button');
-      btn.textContent = i < 9 ? `${i + 1} ${e}` : e;
-      btn.dataset.emotion = e;
-      btn.onclick = () => setEmotion(e);
-      $('emotions').append(btn);
-    }
-    markEmotion();
-    document.querySelectorAll('[data-trigger]').forEach((el) => (el.onclick = () => b.trigger(el.dataset.trigger)));
-    for (const p of BrianWagon.PROPS) {
-      const btn = document.createElement('button');
-      btn.textContent = p;
-      btn.onclick = () => b.grab(p);
-      $('props').append(btn);
-    }
-    $('release').onclick = () => b.release();
-    $('reachBtn').onclick = () => { reaching = !reaching; $('reachBtn').classList.toggle('on', reaching); if (!reaching) b.reach(null); };
-    $('jaw').oninput = () => { $('jawAuto').checked = false; $('jawOut').textContent = $('jaw').value; b.jaw(+$('jaw').value); };
-    $('jawAuto').onchange = () => { if ($('jawAuto').checked) { b.jaw(null); $('jawOut').textContent = 'auto'; } else b.jaw(+$('jaw').value); };
-    $('faceL').onclick = () => b.face('left');
-    $('faceR').onclick = () => b.face('right');
-    $('center').onclick = () => b.moveTo(W / 2, 1.5);
-    $('reseed').onclick = () => makeRig(+$('seed').value);
+    $('char').onchange = () => makeScene(+$('seed').value);
+    $('faceL').onclick = () => cur().face('left');
+    $('faceR').onclick = () => cur().face('right');
+    $('center').onclick = () => cur().moveTo(W / 2, 1.5);
+    $('reseed').onclick = () => makeScene(+$('seed').value);
     $('pause').onclick = togglePause;
     $('step').onclick = () => { paused = true; stepOnce = true; $('pause').classList.add('on'); };
     $('save').onclick = savePng;
     $('bg').onchange = (e) => { $('stage').querySelector('canvas').className = e.target.value; };
-    $('shadows').onchange = (e) => { b.opts.shadows = e.target.checked; };
+    $('shadows').onchange = (e) => { for (const r of scene.rigs) r.opts.shadows = e.target.checked; };
     $('brush').onchange = (e) => {
-      try { b.setStyle(e.target.checked ? 'brush' : 'flat'); }
-      catch (err) { e.target.checked = false; b.setStyle('flat'); alert('Hand-drawn style unavailable: ' + err.message); }
+      try { scene.setStyle(e.target.checked ? 'brush' : 'flat'); }
+      catch (err) { e.target.checked = false; scene.setStyle('flat'); alert('Hand-drawn style unavailable: ' + err.message); }
+    };
+    $('lookEach').onchange = (e) => {
+      if (e.target.checked) {
+        $('follow').checked = false;
+        const ids = scene.entries.map((x) => x.id);
+        ids.forEach((id, i) => scene.cue({ who: id, lookAt: { who: ids[(i + 1) % ids.length] } }));
+      } else scene.entries.forEach((x) => scene.cue({ who: x.id, lookAt: null }));
     };
     for (const id of ['intensity', 'blend', 'size', 'drift', 'boil']) {
       $(id).oninput = () => {
         $(id + 'Out').textContent = id === 'size' ? $(id).value + '%' : $(id).value;
-        if (id === 'size') b.scale = sizeToScale();
-        if (id === 'drift') b.opts.drift = +$(id).value;
-        if (id === 'boil') b.opts.boil = +$(id).value;
+        for (const r of scene.rigs) {
+          if (id === 'size') r.scale = sizeToScale();
+          if (id === 'drift') r.opts.drift = +$(id).value;
+          if (id === 'boil') r.opts.boil = +$(id).value;
+        }
       };
     }
   }
 
-  function setEmotion(e) {
-    b.setEmotion(e, { intensity: +$('intensity').value, blend: +$('blend').value });
-    markEmotion();
-  }
-  function markEmotion() {
-    document.querySelectorAll('[data-emotion]').forEach((el) => el.classList.toggle('on', el.dataset.emotion === b.emotion));
-  }
-  function togglePause() { paused = !paused; $('pause').classList.toggle('on', paused); }
-
   function draw() {
     clear();
     const inside = mouseX >= 0 && mouseX < width && mouseY >= 0 && mouseY < height;
-    b.lookAt(...($('follow').checked && inside ? [mouseX, mouseY] : [null]));
-    if (reaching) b.reach(...(inside ? [mouseX, mouseY] : [null]));
-    if (!paused || stepOnce) { b.update(1 / FPS); stepOnce = false; }
-    b.draw();   // global mode: draws on the sketch canvas
+    const b = cur();
+    if ($('follow').checked) b.lookAt(...(inside ? [mouseX, mouseY] : [null]));
+    if (mouseMethod) b[mouseMethod](...(inside ? [mouseX, mouseY] : [null]));
+    if (!paused || stepOnce) { scene.update(1 / FPS); stepOnce = false; }
+    scene.draw();   // global mode: draws on the sketch canvas
   }
 
   function mousePressed(e) {
     if (e.target !== $('stage').querySelector('canvas')) return;
-    const d = Math.abs(mouseX - b.x);
+    const b = cur(), d = Math.abs(mouseX - b.x);
     if (d > 2) b.moveTo(mouseX, constrain(d / 250, 0.6, 3.5));
   }
 
   function keyPressed() {
     if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'number') return;
-    const n = parseInt(key, 10);
-    if (n >= 1 && n <= BrianWagon.EMOTIONS.length) setEmotion(BrianWagon.EMOTIONS[n - 1]);
-    else if (keyCode === LEFT_ARROW) b.face('left');
-    else if (keyCode === RIGHT_ARROW) b.face('right');
+    const m = META(curId), n = parseInt(key, 10), k = (key || '').toLowerCase();
+    if (n >= 1 && n <= m.emotions.length) setEmotion(m.emotions[n - 1]);
+    else if (keyCode === LEFT_ARROW) cur().face('left');
+    else if (keyCode === RIGHT_ARROW) cur().face('right');
     else if (key === ' ') { togglePause(); return false; }
-    else if (key === 'b') b.trigger('blink');
-    else if (key === 'h') b.trigger('hop');
-    else if (key === 'c') b.trigger('confetti');
-    else if (key === 's') savePng();
-    else if (key === 'p') { propIx = (propIx + 1) % BrianWagon.PROPS.length; b.grab(BrianWagon.PROPS[propIx]); }
-    else if (key === 'r') b.release();
+    else if (k === 's') savePng();
+    else if (m.keys && m.keys[k]) {
+      const a = m.keys[k];
+      if (a.trigger) cur().trigger(a.trigger);
+      else if (a.cue) cur().cue(a.cue);
+      else if (a.cycle) { cycles[k] = ((cycles[k] ?? -1) + 1) % a.cycle.length; cur().cue(a.cycle[cycles[k]]); }
+    }
   }
 
-  // Transparent 1920x1080 still of the current frame.
+  // Transparent 1920x1080 still of the current frame (all characters shown).
   function savePng() {
-    const k = 1920 / W, g = createGraphics(1920, 1080);
+    const k = 1920 / W, g = createGraphics(1920, 1080), p = scene.primary;
     g.pixelDensity(1);
     g.clear();
     // The brush canvas is sized for the live sketch; give it the still's size for this one draw.
-    const bs = b._bs, live = [drawingContext.canvas.width, drawingContext.canvas.height];
+    const bs = scene.ps.bs, live = [drawingContext.canvas.width, drawingContext.canvas.height];
     if (bs) bs.resize(g.drawingContext.canvas.width, g.drawingContext.canvas.height);
-    b.draw(g, { x: b.x * k, y: b.y * k, scale: b.scale * k });
+    scene.draw(g, { x: p.x * k, y: p.y * k, scale: p.scale * k });
     if (bs) bs.resize(...live);
-    save(g, `brian-${b.emotion}-${nf(frameCount, 5)}.png`);
+    save(g, `${curId}-${cur().emotion}-${nf(frameCount, 5)}.png`);
     g.remove();
   }
 </script>
