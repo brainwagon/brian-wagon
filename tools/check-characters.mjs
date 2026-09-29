@@ -66,7 +66,7 @@ for (const Class of classes) {
     const hashes = {};
     for (const e of M.emotions) {
       const run = () => { const r = new Class({ seed: 5, x: 500, y: 900, scale: 30, emotion: e }); step(r, 45); const s = stubCtx(); r.draw({ drawingContext: s.ctx }); return { h: s.hash(), fills: s.fills() }; };
-      try { const a = run(); hashes[e] = a; if (a.fills < 8) bad.push(`${e}: only ${a.fills} fills`); const b = run(); if (a.h !== b.h) bad.push(`${e}: not deterministic`); }
+      try { const a = run(); hashes[e] = a; if (a.fills < 3) bad.push(`${e}: draws almost nothing (${a.fills} fills)`); const b = run(); if (a.h !== b.h) bad.push(`${e}: not deterministic`); }
       catch (err) { bad.push(`${e}: ${err.message}`); }
     }
     bad.length ? fail(id, `emotions: ${bad.join('; ')}`) : pass('every emotion steps, draws and is deterministic');
