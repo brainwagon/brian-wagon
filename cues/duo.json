@@ -1,0 +1,23 @@
+{
+  "width": 1920, "height": 1080, "fps": 30, "duration": 21, "seed": 5, "background": "#161822",
+  "stage": {},
+  "rigs": [
+    { "id": "brian", "type": "brian", "x": -300, "y": 1020, "scale": 34, "facing": "right", "emotion": "happy" },
+    { "id": "bluemark", "type": "bluemark", "x": 1500, "y": 1000, "scale": 36, "facing": "left", "emotion": "neutral" }
+  ],
+  "cues": [
+    { "t": 0.5, "who": "brian", "moveTo": { "x": 520, "seconds": 3.5 } },
+    { "t": 3.8, "who": "brian", "lookAt": { "who": "bluemark" } },
+    { "t": 3.8, "who": "bluemark", "lookAt": { "who": "brian" }, "emotion": "surprised", "trigger": "stagger" },
+    { "t": 5.5, "who": "brian", "wave": true, "emotion": "excited" },
+    { "t": 6.0, "who": "bluemark", "emotion": "curious" },
+    { "t": 7.0, "who": "brian", "wave": false },
+    { "t": 7.0, "who": "bluemark", "moveTo": { "x": 1000, "seconds": 5 } },
+    { "t": 12.5, "who": "bluemark", "wave": true, "emotion": "happy" },
+    { "t": 12.5, "who": "brian", "emotion": "celebrating" },
+    { "t": 15.5, "who": "all", "emotion": "smug" },
+    { "t": 17.0, "who": "bluemark", "trigger": "chomp" },
+    { "t": 17.5, "who": "brian", "emotion": "surprised" },
+    { "t": 19.0, "fade": [1, 1.5] }
+  ]
+}

@@ -1,0 +1,101 @@
+{
+ "width": 1920,
+ "height": 1080,
+ "fps": 30,
+ "duration": 50,
+ "seed": 7,
+ "shadows": false,
+ "rigs": [
+  {
+   "id": "bluemark",
+   "type": "bluemark",
+   "x": 960,
+   "y": 940,
+   "scale": 40,
+   "facing": "right",
+   "emotion": "neutral"
+  }
+ ],
+ "cues": [
+  {
+   "t": 0,
+   "emotion": "neutral"
+  },
+  {
+   "t": 2.5,
+   "emotion": "happy"
+  },
+  {
+   "t": 5,
+   "emotion": "sad"
+  },
+  {
+   "t": 7.5,
+   "emotion": "confused"
+  },
+  {
+   "t": 10,
+   "emotion": "excited"
+  },
+  {
+   "t": 12.5,
+   "emotion": "thinking"
+  },
+  {
+   "t": 15,
+   "emotion": "celebrating"
+  },
+  {
+   "t": 17.5,
+   "emotion": "fearful"
+  },
+  {
+   "t": 20,
+   "emotion": "sleepy"
+  },
+  {
+   "t": 22.5,
+   "emotion": "angry"
+  },
+  {
+   "t": 25,
+   "emotion": "surprised"
+  },
+  {
+   "t": 27.5,
+   "emotion": "curious"
+  },
+  {
+   "t": 30,
+   "emotion": "suspicious"
+  },
+  {
+   "t": 32.5,
+   "emotion": "bored"
+  },
+  {
+   "t": 35,
+   "emotion": "embarrassed"
+  },
+  {
+   "t": 37.5,
+   "emotion": "proud"
+  },
+  {
+   "t": 40,
+   "emotion": "smug"
+  },
+  {
+   "t": 42.5,
+   "emotion": "worried"
+  },
+  {
+   "t": 45,
+   "emotion": "disgusted"
+  },
+  {
+   "t": 47.5,
+   "emotion": "love"
+  }
+ ]
+}
