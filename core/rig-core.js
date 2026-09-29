@@ -230,10 +230,126 @@
     throw new Error('draw: no 2D drawing context found');
   }
 
+  // ------------------------------------------------------------------- painting
+
+  // Paint state shared by everything drawn into one frame (the stage, letters and every character in a
+  // scene): the optional hand-drawn (p5.brush) backend, which layers use it, the layer being drawn, and the
+  // running id used for fills that have none.
+  class PaintState {
+    constructor() { this.bs = null; this.bsOn = {}; this.layer = 'brian'; this.fillN = 0; }
+  }
+
+  // Base for anything that draws cut-paper shapes: edge boil, even-odd fills (flat paper, drop shadows, or the
+  // brush backend), clips and sticker glyphs.  Needs this.opts {boil, shadows, shadowSize, stickers}, this.seed,
+  // this._step (the current boil step) and this.ps (a PaintState).  idPrefix keeps two characters' identically
+  // named parts from sharing boil and brush seeds (Brian's is '' so his output is unchanged).
+  class Painter {
+    get _bs() { return this.ps.bs; }
+    set _bs(v) { this.ps.bs = v; }
+    get _bsOn() { return this.ps.bsOn; }
+    set _bsOn(v) { this.ps.bsOn = v; }
+    get _layer() { return this.ps.layer; }
+    set _layer(v) { this.ps.layer = v; }
+    get _fillN() { return this.ps.fillN; }
+    set _fillN(v) { this.ps.fillN = v; }
+
+    _id(id) { return this.idPrefix && typeof id === 'string' ? this.idPrefix + id : id; }
+
+    _boil(pts, id, amp = this.opts.boil, closed = true) {
+      if (amp <= 0) return pts;
+      const n = pts.length, h = sid(this._id(id)), st = this._step;
+      const s = new Float64Array(n);
+      let L = 0;
+      for (let i = 1; i < n; i++) { L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); s[i] = L; }
+      if (closed) L += Math.hypot(pts[0][0] - pts[n - 1][0], pts[0][1] - pts[n - 1][1]);
+      L = L || 1;
+      const lam = [1.4, 0.8, 0.5], wt = [0.55, 0.3, 0.2];
+      const cyc = lam.map((l) => (closed ? Math.max(1, Math.round(L / l)) : L / l));
+      const ph = lam.map((_, k) => hash01(this.seed, h, k, st) * TAU);
+      const jx = (hash01(this.seed, h, 7, st) - 0.5) * amp * 0.6;
+      const jy = (hash01(this.seed, h, 8, st) - 0.5) * amp * 0.6;
+      const out = new Array(n);
+      for (let i = 0; i < n; i++) {
+        const p = closed ? pts[(i - 1 + n) % n] : pts[Math.max(0, i - 1)];
+        const q = closed ? pts[(i + 1) % n] : pts[Math.min(n - 1, i + 1)];
+        const tx = q[0] - p[0], ty = q[1] - p[1], len = Math.hypot(tx, ty) || 1;
+        const u = s[i] / L;
+        let off = 0;
+        for (let k = 0; k < 3; k++) off += wt[k] * Math.sin(TAU * cyc[k] * u + ph[k]);
+        off *= amp;
+        out[i] = [pts[i][0] - (ty / len) * off + jx, pts[i][1] + (tx / len) * off + jy];
+      }
+      return out;
+    }
+
+    _path(ctx, pts) {
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath();
+    }
+
+    // Fill one or more polygons (even-odd, so a second polygon cuts a hole).
+    _fill(ctx, polys, c, shadow = true, outline = 0, id) {
+      if (!Array.isArray(polys[0][0])) polys = [polys];
+      if (this._bs) {
+        if (this._bsOn[this._layer] !== false) {
+          this._bs.fill(ctx, polys, c, {
+            id: id == null ? ++this._fillN : sid(this._id(id)), step: this._step,
+            outline: shadow && this._layer !== 'letters', grow: outline / 2, alpha: ctx.globalAlpha,
+            gain: this._layer === 'letters' ? 1.4 : 1,   // letters overlap themselves; keep them dense
+          });
+          return;
+        }
+      }
+      if (this.opts.shadows && shadow && c.a === 1) {
+        const M = ctx.getTransform(), inv = M.inverse();
+        const k = this.opts.shadowSize * Math.hypot(M.a, M.b);
+        ctx.save();
+        ctx.translate(inv.a * k + inv.c * k, inv.b * k + inv.d * k);
+        ctx.beginPath();
+        for (const p of polys) this._path(ctx, p);
+        ctx.fillStyle = PAL.shadow.css;
+        ctx.fill('evenodd');
+        if (outline > 0) { ctx.lineWidth = outline; ctx.lineJoin = 'round'; ctx.strokeStyle = PAL.shadow.css; ctx.stroke(); }
+        ctx.restore();
+      }
+      ctx.beginPath();
+      for (const p of polys) this._path(ctx, p);
+      ctx.fillStyle = c.css;
+      ctx.fill('evenodd');
+      if (outline > 0) { ctx.lineWidth = outline; ctx.lineJoin = 'round'; ctx.strokeStyle = c.css; ctx.stroke(); }
+    }
+
+    _shape(ctx, pts, id, c, shadow = true) {
+      const b = this._boil(pts, id);
+      this._fill(ctx, b, c, shadow, 0, id);
+      return b;
+    }
+
+    _clip(ctx, pts) {
+      ctx.beginPath();
+      this._path(ctx, pts);
+      ctx.clip();
+    }
+
+    // Glyph with an optional white sticker backing.  sc = current scale, used
+    // to keep boil and backing width constant in rig units.
+    _sticker(ctx, build, id, c, sc) {
+      const amp = this.opts.boil / Math.max(sc, 0.2);
+      // The backing is the glyph itself, stroked with a round join, so the
+      // border has an even width all round and shares the glyph's boil.
+      const polys = build(0).map((p, j) => this._boil(p, id + j, amp));
+      if (this.opts.stickers) this._fill(ctx, polys, PAL.white, true, 0.12 / Math.max(sc, 0.2), id + 'S');
+      this._fill(ctx, polys, c, !this.opts.stickers, 0, id);
+    }
+  }
+  Painter.prototype.idPrefix = '';
+
   const RigCore = {
     TAU, DEG, clamp, lerp, smooth, backOut, angDiff, EASE,
     mix, hash01, noise1, mulberry32, sid, col, PAL, SU, LETTER_COLORS, CONFETTI,
     circle, ellipse, arcPts, arcPtsE, densify, ribbon, teardrop, sparkle, QHOOK, GLYPH, resolveCtx,
+    PaintState, Painter,
   };
 
   if (typeof module === 'object' && module.exports) module.exports = RigCore;

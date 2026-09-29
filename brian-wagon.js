@@ -16,7 +16,7 @@
   const RigCore = root.RigCore || require('./core/rig-core.js');
   const {
     TAU, DEG, clamp, lerp, smooth, backOut, angDiff, EASE, mix, hash01, noise1, mulberry32, sid, col,
-    SU, LETTER_COLORS, CONFETTI, circle, ellipse, arcPts, arcPtsE, densify, ribbon, teardrop, sparkle, QHOOK, GLYPH, resolveCtx,
+    SU, LETTER_COLORS, CONFETTI, circle, ellipse, arcPts, arcPtsE, densify, ribbon, teardrop, sparkle, QHOOK, GLYPH, resolveCtx, PaintState, Painter,
   } = RigCore;
 
   // Brian's palette: the shared one plus his own colours.
@@ -291,8 +291,9 @@
 
   // --------------------------------------------------------------------- rig
 
-  class BrianWagon {
+  class BrianWagon extends Painter {
     constructor(opts = {}) {
+      super();
       this.opts = Object.assign({
         seed: 1, x: 0, y: 0, scale: 20, facing: 'right', emotion: 'neutral',
         drift: 0.3,          // brain bob envelope, units
@@ -306,7 +307,7 @@
       this.rng = mulberry32(this.seed ^ 0x5eed);
       this.x = this.opts.x; this.y = this.opts.y; this.scale = this.opts.scale;
       this.t = 0;
-      this._bs = null; this._bsOn = {}; this._layer = 'brian'; this._fillN = 0;   // hand-drawn style (see setStyle)
+      this.ps = new PaintState();   // hand-drawn style state (see setStyle)
 
       const f = this.opts.facing === 'left' ? -1 : 1;
       this._faceT = f; this._face = f;
@@ -910,83 +911,6 @@
       return this;
     }
 
-    _boil(pts, id, amp = this.opts.boil, closed = true) {
-      if (amp <= 0) return pts;
-      const n = pts.length, h = sid(id), st = this._step;
-      const s = new Float64Array(n);
-      let L = 0;
-      for (let i = 1; i < n; i++) { L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); s[i] = L; }
-      if (closed) L += Math.hypot(pts[0][0] - pts[n - 1][0], pts[0][1] - pts[n - 1][1]);
-      L = L || 1;
-      const lam = [1.4, 0.8, 0.5], wt = [0.55, 0.3, 0.2];
-      const cyc = lam.map((l) => (closed ? Math.max(1, Math.round(L / l)) : L / l));
-      const ph = lam.map((_, k) => hash01(this.seed, h, k, st) * TAU);
-      const jx = (hash01(this.seed, h, 7, st) - 0.5) * amp * 0.6;
-      const jy = (hash01(this.seed, h, 8, st) - 0.5) * amp * 0.6;
-      const out = new Array(n);
-      for (let i = 0; i < n; i++) {
-        const p = closed ? pts[(i - 1 + n) % n] : pts[Math.max(0, i - 1)];
-        const q = closed ? pts[(i + 1) % n] : pts[Math.min(n - 1, i + 1)];
-        const tx = q[0] - p[0], ty = q[1] - p[1], len = Math.hypot(tx, ty) || 1;
-        const u = s[i] / L;
-        let off = 0;
-        for (let k = 0; k < 3; k++) off += wt[k] * Math.sin(TAU * cyc[k] * u + ph[k]);
-        off *= amp;
-        out[i] = [pts[i][0] - (ty / len) * off + jx, pts[i][1] + (tx / len) * off + jy];
-      }
-      return out;
-    }
-
-    _path(ctx, pts) {
-      ctx.moveTo(pts[0][0], pts[0][1]);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-      ctx.closePath();
-    }
-
-    // Fill one or more polygons (even-odd, so a second polygon cuts a hole).
-    _fill(ctx, polys, c, shadow = true, outline = 0, id) {
-      if (!Array.isArray(polys[0][0])) polys = [polys];
-      if (this._bs) {
-        if (this._bsOn[this._layer] !== false) {
-          this._bs.fill(ctx, polys, c, {
-            id: id == null ? ++this._fillN : sid(id), step: this._step,
-            outline: shadow && this._layer !== 'letters', grow: outline / 2, alpha: ctx.globalAlpha,
-            gain: this._layer === 'letters' ? 1.4 : 1,   // letters overlap themselves; keep them dense
-          });
-          return;
-        }
-      }
-      if (this.opts.shadows && shadow && c.a === 1) {
-        const M = ctx.getTransform(), inv = M.inverse();
-        const k = this.opts.shadowSize * Math.hypot(M.a, M.b);
-        ctx.save();
-        ctx.translate(inv.a * k + inv.c * k, inv.b * k + inv.d * k);
-        ctx.beginPath();
-        for (const p of polys) this._path(ctx, p);
-        ctx.fillStyle = PAL.shadow.css;
-        ctx.fill('evenodd');
-        if (outline > 0) { ctx.lineWidth = outline; ctx.lineJoin = 'round'; ctx.strokeStyle = PAL.shadow.css; ctx.stroke(); }
-        ctx.restore();
-      }
-      ctx.beginPath();
-      for (const p of polys) this._path(ctx, p);
-      ctx.fillStyle = c.css;
-      ctx.fill('evenodd');
-      if (outline > 0) { ctx.lineWidth = outline; ctx.lineJoin = 'round'; ctx.strokeStyle = c.css; ctx.stroke(); }
-    }
-
-    _shape(ctx, pts, id, c, shadow = true) {
-      const b = this._boil(pts, id);
-      this._fill(ctx, b, c, shadow, 0, id);
-      return b;
-    }
-
-    _clip(ctx, pts) {
-      ctx.beginPath();
-      this._path(ctx, pts);
-      ctx.clip();
-    }
-
     // Letters drawn between the jaws (in _drawArm) rather than behind the rig: the one being fetched or
     // carried, and for a moment after it is put down.  Keeping the same draw order for the whole
     // approach, grip and release avoids the claw popping from in front of the letter to behind it.
@@ -1337,17 +1261,6 @@
         bot.push([x, yc - th]);
       }
       return top.concat(bot.reverse());
-    }
-
-    // Glyph with an optional white sticker backing.  sc = current scale, used
-    // to keep boil and backing width constant in rig units.
-    _sticker(ctx, build, id, c, sc) {
-      const amp = this.opts.boil / Math.max(sc, 0.2);
-      // The backing is the glyph itself, stroked with a round join, so the
-      // border has an even width all round and shares the glyph's boil.
-      const polys = build(0).map((p, j) => this._boil(p, id + j, amp));
-      if (this.opts.stickers) this._fill(ctx, polys, PAL.white, true, 0.12 / Math.max(sc, 0.2), id + 'S');
-      this._fill(ctx, polys, c, !this.opts.stickers, 0, id);
     }
 
     _drawOverlays(ctx, fx) {
