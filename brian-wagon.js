@@ -688,14 +688,15 @@
         for (let i = 0; i < 18; i++) this._spawnBubble();
       } else if (name === 'confetti') {
         const fs = this._face < 0 ? -1 : 1;
-        for (let i = 0; i < 70; i++) {
+        // Big pieces, thrown wide: the launch spans the jar and the throw reaches ~14 units either side.
+        for (let i = 0; i < 90; i++) {
           this._confetti.push({
-            wx: this.x / this.scale + (r() - 0.5) * 1.2 * fs, y: 9.5 + this._lift(),
-            vx: (r() - 0.5) * 8, vy: 5 + r() * 6,
+            wx: this.x / this.scale + (r() - 0.5) * 5 * fs, y: 9.5 + this._lift(),
+            vx: (r() - 0.5) * 26, vy: 6 + r() * 8,
             rot: r() * TAU, vr: (r() - 0.5) * 14, flip: 4 + r() * 8,
-            w: 0.12 + r() * 0.1, h: 0.07 + r() * 0.05,
+            w: 0.34 + r() * 0.26, h: 0.2 + r() * 0.14,
             col: CONFETTI[Math.floor(r() * CONFETTI.length)],
-            age: 0, life: 2.2 + r(),
+            age: 0, life: 2.8 + r() * 1.2,
           });
         }
       } else throw new Error(`BrianWagon: unknown trigger "${name}"`);
@@ -1047,7 +1048,7 @@
       this._confetti = this._confetti.filter((c) => {
         c.age += dt;
         c.vy = Math.max(c.vy - 14 * dt, -2.5);
-        c.vx *= Math.exp(-1.2 * dt);
+        c.vx *= Math.exp(-0.9 * dt);
         c.wx += c.vx * dt; c.y += c.vy * dt;
         c.rot += c.vr * dt;
         return c.age < c.life;
