@@ -513,6 +513,17 @@
 
     _cueExtra() {}
 
+    // Standalone drawing of just this character (Brian overrides it to add the stage and letters).
+    // draw(target, {x, y, scale}) — the overrides only move where the rig is drawn; they don't change its state.
+    draw(target, o = {}) {
+      const ctx = resolveCtx(target);
+      const x = o.x != null ? o.x : this.x, y = o.y != null ? o.y : this.y, s = o.scale != null ? o.scale : this.scale;
+      this._step = Math.floor(this.t / this.opts.boilStep + 1e-6);
+      this._fillN = 0;
+      this._drawRig(ctx, x, y, s);
+      return this;
+    }
+
     _warnUnknownCueKeys(c) {
       const known = CutPaperRig.COMMON_CUE_KEYS.concat(this.constructor.CUE_KEYS || []);
       const seen = this.constructor._warned || (this.constructor._warned = new Set());

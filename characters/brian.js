@@ -461,6 +461,7 @@
       if (c.release) this.release();
       if ('wave' in c) this.wave(c.wave);
       for (const t of [].concat(c.trigger || [])) this.trigger(t);
+      this._warnUnknownCueKeys(c);
       return this;
     }
 
@@ -992,6 +993,7 @@
   BrianWagon.DEFAULTS = Object.assign({}, CutPaperRig.DEFAULTS, {
     drift: 0.3,          // brain bob envelope, units
   });
+  BrianWagon.CUE_KEYS = ['reach', 'jaw', 'carry', 'carryTo', 'putDown', 'grab', 'release'];   // beyond the common ones
   BrianWagon.EMOTIONS = Object.keys(PRESETS);
   BrianWagon.TRIGGERS = ['blink', 'hop', 'confetti', 'bubbles'];
   BrianWagon.PROPS = Object.keys(PROPS);
