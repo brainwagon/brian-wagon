@@ -413,7 +413,7 @@
       if (typeof o === 'string') o = { mode: o };
       if (!o || o.mode === 'flat') { this._bs = null; return this; }
       const { mode, layers, ...rest } = o;
-      const Ctor = typeof BrushStyle !== 'undefined' ? BrushStyle : (typeof require === 'function' ? require('./brush-style.js') : null);
+      const Ctor = typeof BrushStyle !== 'undefined' ? BrushStyle : (typeof require === 'function' ? require('../brush-style.js') : null);
       if (!Ctor) throw new Error('setStyle: brush-style.js is not loaded');
       this._bsOn = Object.assign({ stage: true, letters: true, [this.layerName]: true, props: true }, layers);
       if (!this._bs) this._bs = new Ctor(rest);
