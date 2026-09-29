@@ -1,0 +1,16 @@
+{
+  "width": 1920, "height": 1080, "fps": 30, "duration": 22, "seed": 11,
+  "rigs": [{ "id": "bluemark", "type": "bluemark", "x": 300, "y": 900, "scale": 40, "facing": "right" }],
+  "cues": [
+    { "t": 0.5, "lookAt": [1500, 500] },
+    { "t": 1.0, "moveTo": { "x": 1000, "seconds": 3.5 } },
+    { "t": 5.0, "emotion": "happy", "wave": true },
+    { "t": 7.0, "wave": false, "emotion": "neutral" },
+    { "t": 7.5, "emotion": "curious", "point": [1700, 350] },
+    { "t": 10.0, "point": null, "emotion": "sad", "moveTo": { "x": 400, "seconds": 4.5 } },
+    { "t": 15.0, "emotion": "angry", "trigger": "stagger" },
+    { "t": 17.0, "emotion": "surprised", "trigger": "hop" },
+    { "t": 19.0, "emotion": "thinking", "trigger": "chomp" },
+    { "t": 21.0, "emotion": "neutral", "lookAt": null }
+  ]
+}

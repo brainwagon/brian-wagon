@@ -495,6 +495,44 @@
       }
     }
 
+    // Apply one cue object (see cues/*.json).  The common keys are handled here; a character adds its own in
+    // _cueExtra(c) and lists them in its static CUE_KEYS so unknown keys can be reported (once, never thrown).
+    cue(c) {
+      if ('style' in c) this.setStyle(c.style);
+      if (c.emotion) this.setEmotion(c.emotion, { intensity: c.intensity ?? 1, blend: c.blend ?? 0.3 });
+      if ('lookAt' in c) c.lookAt === 'viewer' ? this.lookAt('viewer') : c.lookAt ? this.lookAt(c.lookAt[0], c.lookAt[1]) : this.lookAt(null);
+      if (c.face) this.face(c.face);
+      if (c.setX != null) this.setX(c.setX);
+      if (c.moveTo) this.moveTo(c.moveTo.x, c.moveTo.seconds ?? 1.5, { ease: c.moveTo.ease ?? 'inOut' });
+      if ('wave' in c && this.wave) this.wave(c.wave);
+      this._cueExtra(c);
+      for (const t of [].concat(c.trigger || [])) this.trigger(t);
+      this._warnUnknownCueKeys(c);
+      return this;
+    }
+
+    _cueExtra() {}
+
+    _warnUnknownCueKeys(c) {
+      const known = CutPaperRig.COMMON_CUE_KEYS.concat(this.constructor.CUE_KEYS || []);
+      const seen = this.constructor._warned || (this.constructor._warned = new Set());
+      for (const k in c) {
+        if (known.includes(k) || seen.has(k)) continue;
+        seen.add(k);
+        if (typeof console !== 'undefined') console.warn(`${this.constructor.name}: ignoring cue key "${k}"`);
+      }
+    }
+
+    // Pupils: quick, well-damped saccades toward the gaze targets (call from _physics).
+    _stepPupils(h) {
+      for (let i = 0; i < 2; i++) {
+        const p = this._pupil[i], g = this._pupilT[i];
+        p[2] += h * (-1400 * (p[0] - g[0]) - 67 * p[2]);
+        p[3] += h * (-1400 * (p[1] - g[1]) - 67 * p[3]);
+        p[0] += h * p[2]; p[1] += h * p[3];
+      }
+    }
+
     // ------------------------------------------------------------ hook defaults
 
     _onEmotion() {}
@@ -595,6 +633,9 @@
       return [((px - this.x) / this.scale) * fs, (this.y - py) / this.scale - this._lift()];
     }
   }
+  // Keys every character understands, plus the ones the Scene / renderer consume.
+  CutPaperRig.COMMON_CUE_KEYS = ['t', 'who', 'fade', 'style', 'emotion', 'intensity', 'blend', 'lookAt', 'face', 'setX', 'moveTo',
+    'wave', 'trigger', 'letters', 'fadeLetters'];
   CutPaperRig.DEFAULTS = {
     seed: 1, x: 0, y: 0, scale: 20, facing: 'right', emotion: 'neutral',
     boil: 0.03,          // edge wobble amplitude, units

@@ -14,6 +14,7 @@
     'core/stage.js',
     'core/registry.js',
     'characters/brian.js',
+    'characters/bluemark.js',
     'core/scene.js',          // after the characters
   ];
 
