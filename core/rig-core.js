@@ -345,11 +345,209 @@
   }
   Painter.prototype.idPrefix = '';
 
+  // ------------------------------------------------------------- the character base
+
+  // The contract for a character.  A subclass supplies:
+  //   static NEUTRAL, PRESETS   emotion parameter vectors (see setEmotion) and static EMOTIONS (names)
+  //   static DEFAULTS           extends CutPaperRig.DEFAULTS with its own options
+  //   layerName                 the brush layer it paints in
+  //   _drawRig(ctx, x, y, s)    draws the character only (no stage, letters or grain)
+  //   _physics(h)               one spring substep (h seconds); update() runs them at 240 Hz
+  //   optional hooks: _onEmotion(name, blend), _onMove(du), _eyeAnchor(i), _updateBody(dt), _updateParticles(dt),
+  //                   _lift(), headWorld(), _cueExtra(c)
+  // and calls this.setEmotion(this.opts.emotion, { blend: 0 }) at the end of its constructor.
+  // Provided here: emotion blending, gaze/blink/dart state, movement and facing, the update() skeleton, the
+  // hand-drawn style switch and the common cue keys.
+  class CutPaperRig extends Painter {
+    constructor(opts = {}) {
+      super();
+      this.opts = Object.assign({}, this.constructor.DEFAULTS, opts);
+      this.seed = this.opts.seed | 0;
+      this.rng = mulberry32(this.seed ^ 0x5eed);
+      this.x = this.opts.x; this.y = this.opts.y; this.scale = this.opts.scale;
+      this.t = 0;
+      this.ps = new PaintState();   // hand-drawn style state (see setStyle)
+
+      const f = this.opts.facing === 'left' ? -1 : 1;
+      this._faceT = f; this._face = f;
+      this.move = null; this._v = 0; this._a = 0;
+      this._viewer = false;
+      this._pupil = [[0, 0, 0, 0], [0, 0, 0, 0]];             // x, y, vx, vy (normalised)
+      this._pupilT = [[0, 0], [0, 0]];
+      this._dart = [[0, 0], [0, 0]]; this._nextDart = 0.5;
+      this._blinkT = -1; this._nextBlink = 1.5 + 2 * this.rng();
+      this._look = null;
+      this.p = Object.assign({}, this.constructor.NEUTRAL);
+      this._emo = null;
+      this.emotion = 'neutral';
+    }
+
+    // ------------------------------------------------------------- control
+
+    setEmotion(name, { intensity = 1, blend = 0.3 } = {}) {
+      const { NEUTRAL, PRESETS } = this.constructor;
+      const preset = PRESETS[name];
+      if (!preset) throw new Error(`${this.constructor.name}: unknown emotion "${name}"`);
+      const to = {};
+      for (const k in NEUTRAL) to[k] = lerp(NEUTRAL[k], k in preset ? preset[k] : NEUTRAL[k], intensity);
+      if (blend <= 0) { this.p = to; this._emo = null; }
+      else this._emo = { from: Object.assign({}, this.p), to, t0: this.t, dur: blend };
+      this._onEmotion(name, blend);
+      this.emotion = name;
+      this.intensity = intensity;
+      return this;
+    }
+
+    // lookAt(x, y) in scene pixels; lookAt(null) = idle drift; lookAt('viewer') = straight ahead.
+    lookAt(x, y) {
+      this._viewer = x === 'viewer';
+      this._look = x == null || this._viewer ? null : [x, y];
+      return this;
+    }
+
+    // Hand-drawn style.  setStyle('brush') or setStyle({ mode: 'brush', layers: { stage: true, letters: true,
+    // brian: true, props: true }, ...BrushStyle options }) draws through p5.brush (needs brush-style.js and
+    // vendor/brush.js); setStyle('flat') / setStyle(null) goes back to flat cut paper.  Layers not listed
+    // default to on, and a layer set to false stays flat paper.
+    setStyle(o = 'flat') {
+      if (typeof o === 'string') o = { mode: o };
+      if (!o || o.mode === 'flat') { this._bs = null; return this; }
+      const { mode, layers, ...rest } = o;
+      const Ctor = typeof BrushStyle !== 'undefined' ? BrushStyle : (typeof require === 'function' ? require('./brush-style.js') : null);
+      if (!Ctor) throw new Error('setStyle: brush-style.js is not loaded');
+      this._bsOn = Object.assign({ stage: true, letters: true, [this.layerName]: true, props: true }, layers);
+      if (!this._bs) this._bs = new Ctor(rest);
+      else this._bs.o = Object.assign(this._bs.o, rest);
+      return this;
+    }
+
+    face(dir) { this._faceT = dir === 'left' || dir < 0 ? -1 : 1; return this; }
+
+    setX(x) { this.x = x; this.move = null; this._v = 0; this._a = 0; return this; }
+
+    moveTo(x, seconds = 1.5, { ease = 'inOut', face = true } = {}) {
+      this.move = { x0: this.x, x1: x, t0: this.t, dur: Math.max(seconds, 1e-3), ease: EASE[ease] || EASE.inOut };
+      if (face && x !== this.x) this._faceT = Math.sign(x - this.x);
+      return this;
+    }
+
+    get moving() { return Math.abs(this._v) > 0.05; }
+    get facing() { return this._faceT < 0 ? 'left' : 'right'; }
+
+    // ------------------------------------------------------------ hook defaults
+
+    _onEmotion() {}
+    _onMove() {}
+    _updateBody() {}
+    _updateParticles() {}
+    _lift() { return 0; }
+    headWorld() { return [this.x, this.y - 5 * this.scale]; }
+
+    // -------------------------------------------------------------- update
+
+    update(dt) {
+      dt = clamp(dt, 0, 0.1);
+      if (dt === 0) return this;
+      this.t += dt;
+      this._updateEmotion();
+      this._updateMove(dt);
+      this._updateEyes(dt);
+      this._updateBody(dt);
+      const n = Math.ceil(dt * 240), h = dt / n;
+      for (let i = 0; i < n; i++) this._physics(h);
+      this._updateParticles(dt);
+      return this;
+    }
+
+    _updateEmotion() {
+      const e = this._emo;
+      if (!e) return;
+      const k = smooth(clamp((this.t - e.t0) / e.dur, 0, 1));
+      for (const key in e.to) this.p[key] = lerp(e.from[key], e.to[key], k);
+      if (k >= 1) this._emo = null;
+    }
+
+    _updateMove(dt) {
+      const xPrev = this.x, m = this.move;
+      if (m) {
+        const k = clamp((this.t - m.t0) / m.dur, 0, 1);
+        this.x = m.x0 + (m.x1 - m.x0) * m.ease(k);
+        if (k >= 1) this.move = null;
+      }
+      const du = (this.x - xPrev) / this.scale;
+      const v = du / dt;
+      this._a += ((v - this._v) / dt - this._a) * Math.min(1, dt * 25);
+      this._v = v;
+      this._onMove(du);
+
+      const d = this._faceT - this._face, step = dt / 0.12;
+      this._face = Math.abs(d) <= step ? this._faceT : this._face + Math.sign(d) * step;
+    }
+
+    _updateEyes(dt) {
+      const P = this.p, r = this.rng, t = this.t;
+
+      if (this._blinkT >= 0 && (this._blinkT += dt) > P.blinkDur) this._blinkT = -1;
+      if (P.autoBlink > 0.05) {
+        if (t >= this._nextBlink) {
+          this._blinkT = 0;
+          this._nextBlink = t + (2.5 + 3.5 * r()) / P.autoBlink;
+        }
+      } else this._nextBlink = t + 1;
+
+      if (P.dartRate > 0.01) {
+        if (this._nextDart - t > 3 / P.dartRate) this._nextDart = t + r() / P.dartRate;
+        if (t >= this._nextDart) {
+          const disk = () => { const a = r() * TAU, m = Math.sqrt(r()); return [m * Math.cos(a), m * Math.sin(a)]; };
+          this._dart[0] = disk();
+          this._dart[1] = P.diverge > 0.5 ? disk() : this._dart[0];
+          this._nextDart = t + Math.max(0.12, -Math.log(1 - r()) / P.dartRate);
+        }
+      }
+
+      const look = this._look ? this._toLocal(this._look[0], this._look[1]) : null;
+      const idle = [noise1(this.seed + 21, t * 0.25) * 0.55, noise1(this.seed + 22, t * 0.2) * 0.35];
+      const div = [[-0.5, 0.35], [0.5, -0.35]];
+      for (let i = 0; i < 2; i++) {
+        let g;
+        if (look) {
+          const [ex, ey] = this._eyeAnchor(i);
+          const vx = look[0] - ex, vy = look[1] - ey, m = Math.hypot(vx, vy) || 1;
+          const k = Math.min(1, m / 3.5) / m;
+          g = [vx * k, vy * k];
+        } else g = this._viewer ? [0, 0] : idle.slice();
+        g[0] = g[0] * P.gazeFollow + P.gazeX + P.diverge * div[i][0] + this._dart[i][0] * P.dartAmp;
+        g[1] = g[1] * P.gazeFollow + P.gazeY + P.diverge * div[i][1] + this._dart[i][1] * P.dartAmp;
+        if (P.tremble > 0) {
+          g[0] += noise1(this.seed + 31 + i, t * 25) * P.tremble;
+          g[1] += noise1(this.seed + 41 + i, t * 25) * P.tremble;
+        }
+        const m = Math.hypot(g[0], g[1]);
+        if (m > 1) { g[0] /= m; g[1] /= m; }
+        this._pupilT[i] = g;
+      }
+    }
+
+    // Pixel scene point -> rig units (mirrored when facing left).
+    _toLocal(px, py) {
+      const fs = this._face < 0 ? -1 : 1;
+      return [((px - this.x) / this.scale) * fs, (this.y - py) / this.scale - this._lift()];
+    }
+  }
+  CutPaperRig.DEFAULTS = {
+    seed: 1, x: 0, y: 0, scale: 20, facing: 'right', emotion: 'neutral',
+    boil: 0.03,          // edge wobble amplitude, units
+    boilStep: 1 / 15,    // seconds per boil pose (on twos at 30 fps)
+    shadows: false,      // paper-cut drop shadows
+    shadowSize: 0.06,    // units
+    stickers: true,      // white backing behind overlay glyphs
+  };
+
   const RigCore = {
     TAU, DEG, clamp, lerp, smooth, backOut, angDiff, EASE,
     mix, hash01, noise1, mulberry32, sid, col, PAL, SU, LETTER_COLORS, CONFETTI,
     circle, ellipse, arcPts, arcPtsE, densify, ribbon, teardrop, sparkle, QHOOK, GLYPH, resolveCtx,
-    PaintState, Painter,
+    PaintState, Painter, CutPaperRig,
   };
 
   if (typeof module === 'object' && module.exports) module.exports = RigCore;
