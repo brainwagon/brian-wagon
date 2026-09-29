@@ -11,10 +11,10 @@
 <canvas id="c"></canvas>
 <script src="manifest.js"></script>
 <script>
-  let spec, rig, canvas, ctx, cues, next, fade = { a: 0, from: 0, to: 0, t0: 0, dur: 1 };
+  let spec, scene, canvas, ctx, cues, next, fade = { a: 0, from: 0, to: 0, t0: 0, dur: 1 };
 
   function applyCue(c) {
-    rig.cue(c);
+    scene.cue(c);
     if (c.fade) fade = { from: fade.a, to: c.fade[0], t0: c.t, dur: Math.max(c.fade[1], 1e-3), a: fade.a };
   }
 
@@ -23,15 +23,8 @@
     canvas = document.getElementById('c');
     canvas.width = spec.width; canvas.height = spec.height;
     ctx = canvas.getContext('2d');
-    const r = spec.rig || {};
-    rig = new BrianWagon({
-      seed: spec.seed ?? 1, shadows: !!spec.shadows,
-      x: r.x ?? spec.width / 2, y: r.y ?? spec.height * 0.85, scale: r.scale ?? spec.height * 0.02,
-      facing: r.facing ?? 'right', emotion: r.emotion ?? 'neutral',
-      ...(spec.options || {}),
-    });
-    if (spec.stage) rig.setStage(spec.stage);
-    if (spec.style) rig.setStyle(spec.style);   // 'brush' | 'flat' | { mode, layers, ...brush options }
+    // One Scene: the characters (spec.rigs, or the older single spec.rig = one Brian), the stage, the style.
+    scene = RigScene.Scene.fromSpec(spec);
     cues = (spec.cues || []).map((c, i) => ({ ...c, i })).sort((a, b) => a.t - b.t || a.i - b.i);
     next = 0;
     return Math.round((spec.duration ?? 5) * (spec.fps ?? 30));
@@ -41,13 +34,13 @@
   // draw = false only advances the simulation (used to reach a still without painting every frame).
   window.renderFrame = (i, draw = true) => {
     const fps = spec.fps ?? 30;
-    if (i > 0) rig.update(1 / fps);
+    if (i > 0) scene.update(1 / fps);
     while (next < cues.length && cues[next].t <= i / fps + 1e-9) applyCue(cues[next++]);
     if (!draw) return null;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (spec.background) { ctx.fillStyle = spec.background; ctx.fillRect(0, 0, canvas.width, canvas.height); }
-    rig.draw(ctx);
+    scene.draw(ctx);
     const k = Math.min(1, Math.max(0, (i / fps - fade.t0) / fade.dur));
     fade.a = fade.from + (fade.to - fade.from) * k * k * (3 - 2 * k);
     if (fade.a > 0.001) { ctx.fillStyle = `rgba(0,0,0,${fade.a})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }

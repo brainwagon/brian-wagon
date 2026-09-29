@@ -14,6 +14,7 @@
     'core/stage.js',
     'core/registry.js',
     'characters/brian.js',
+    'core/scene.js',          // after the characters
   ];
 
   if (typeof document !== 'undefined' && document.write) {
