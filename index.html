@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Brian Wagon</title>
 <script src="https://cdn.jsdelivr.net/npm/p5@1/lib/p5.min.js"></script>
+<script src="vendor/brush.js"></script>
+<script src="brush-style.js"></script>
 <script src="brian-wagon.js"></script>
 <style>
   :root { --ink: #1b2b3a; --panel: #f6f3ee; --line: #d8d2c6; --accent: #c8322b; }
@@ -56,6 +58,7 @@
     <label>Drift <input id="drift" type="range" min="0" max="0.6" step="0.01" value="0.3"><output id="driftOut">0.3</output></label>
     <label>Boil <input id="boil" type="range" min="0" max="0.08" step="0.005" value="0.03"><output id="boilOut">0.03</output></label>
     <label><input id="shadows" type="checkbox"> Drop shadows</label>
+    <label title="Watercolour fills and ink outlines via p5.brush (needs WebGL2). Slow: expect a few frames per second."><input id="brush" type="checkbox"> Hand-drawn (p5.brush)</label>
     <label>Background
       <select id="bg"><option value="checker">Checker</option><option value="light">Light</option><option value="grey" selected>Grey</option><option value="dark">Dark</option></select>
     </label>
@@ -79,6 +82,7 @@
       facing: old ? old.facing : 'right', emotion: old ? old.emotion : 'neutral',
       drift: +$('drift').value, boil: +$('boil').value, shadows: $('shadows').checked,
     });
+    if ($('brush').checked) b.setStyle('brush');
   }
   const sizeToScale = () => (+$('size').value / 100) * H / 10;
 
@@ -116,6 +120,10 @@
     $('save').onclick = savePng;
     $('bg').onchange = (e) => { $('stage').querySelector('canvas').className = e.target.value; };
     $('shadows').onchange = (e) => { b.opts.shadows = e.target.checked; };
+    $('brush').onchange = (e) => {
+      try { b.setStyle(e.target.checked ? 'brush' : 'flat'); }
+      catch (err) { e.target.checked = false; b.setStyle('flat'); alert('Hand-drawn style unavailable: ' + err.message); }
+    };
     for (const id of ['intensity', 'blend', 'size', 'drift', 'boil']) {
       $(id).oninput = () => {
         $(id + 'Out').textContent = id === 'size' ? $(id).value + '%' : $(id).value;
@@ -170,7 +178,11 @@
     const k = 1920 / W, g = createGraphics(1920, 1080);
     g.pixelDensity(1);
     g.clear();
+    // The brush canvas is sized for the live sketch; give it the still's size for this one draw.
+    const bs = b._bs, live = [drawingContext.canvas.width, drawingContext.canvas.height];
+    if (bs) bs.resize(g.drawingContext.canvas.width, g.drawingContext.canvas.height);
     b.draw(g, { x: b.x * k, y: b.y * k, scale: b.scale * k });
+    if (bs) bs.resize(...live);
     save(g, `brian-${b.emotion}-${nf(frameCount, 5)}.png`);
     g.remove();
   }
