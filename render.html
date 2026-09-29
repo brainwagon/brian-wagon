@@ -19,6 +19,10 @@
     if (c.face) rig.face(c.face);
     if (c.setX != null) rig.setX(c.setX);
     if (c.moveTo) rig.moveTo(c.moveTo.x, c.moveTo.seconds ?? 1.5, { ease: c.moveTo.ease ?? 'inOut' });
+    if ('reach' in c) c.reach ? rig.reach(c.reach[0], c.reach[1]) : rig.reach(null);
+    if ('jaw' in c) rig.jaw(c.jaw);
+    if (c.grab) rig.grab(typeof c.grab === 'string' ? c.grab : c.grab.prop, typeof c.grab === 'string' ? {} : { at: c.grab.at });
+    if (c.release) rig.release();
     for (const t of [].concat(c.trigger || [])) rig.trigger(t);
   }
 

@@ -84,24 +84,26 @@
     brain: col('#336699'), brainHi: col('#4D80B3'), brainDeep: col('#2A5580'),
     fluid: col('#A9C4DE', 0.55), sheen: col('#FFFFFF', 0.5),
     glass: col('#FFFFFF', 0.15), glassRim: col('#FFFFFF', 0.45), glint: col('#FFFFFF', 0.65),
-    knob: col('#C9D6E2'), plate: col('#8A9199'),
+    metal: col('#8A9199'),
     wagon: col('#C8322B'), wagonShade: col('#9E2620'), tyre: col('#2B2B2B'),
     white: col('#FFFFFF'), pupil: col('#000000'), mouth: col('#1B2B3A'), ink: col('#1B2B3A'),
     bubble: col('#FFFFFF', 0.6), drop: col('#8EC9F0'), gold: col('#F2C230'),
     shadow: col('#000000', 0.22),
+    teal: col('#2BB3A3'), orange: col('#F28C28'), bulb: col('#FFE680'),
   };
   const CONFETTI = ['#F2C230', '#2BB3A3', '#EF6F9C', '#F28C28', '#5B8DEF', '#FFFFFF'].map((h) => col(h).css);
 
   // ------------------------------------------------------------------ geometry
 
   const G = {
-    wheelR: 0.8, wheelX: 2.2,
-    bed: [[-3.0, 1.2], [3.0, 1.2], [3.2, 2.3], [-3.2, 2.3]],
-    pivot: [3.0, 1.45], handleLen: 2.4, handleRest: 25 * DEG, handleMove: 45 * DEG,
-    plate: [-2.35, 1.3, 2.35, 1.6],
-    jarW: 2.1, glassT: 0.08, jarY0: 1.6, shoulder: 6.6, water: 8.0,
-    brain: [0, 5.0], face: [0.3, 0.15], eyeDX: 0.5, eyeR: 0.375, mouthY: -0.62,
-    brainX: 0.55, brainYLo: -1.1, brainYHi: 1.3,
+    wheelR: 1.2, wheelX: 2.7,
+    bed: [[-3.3, 2.0], [3.3, 2.0], [3.5, 4.2], [-3.5, 4.2]],
+    pivot: [3.4, 3.2], armRest: 2.0, armMaxExt: 3.2, jawLen: 1.0,
+    armRestAng: 25 * DEG, armMoveAng: 45 * DEG, armLo: -40 * DEG, armHi: 115 * DEG,
+    jarW: 2.95, glassT: 0.18, jarPivotY: 4.0, jarY0: 3.9, shoulder: 6.4, domeRy: 2.76, water: 8.2,
+    brainScale: 1.5, brain: [0, 6.05],
+    faceK: 1.5, face: [0.45, 0.22], eyeDX: 0.5, eyeR: 0.375, mouthY: -0.62,
+    brainX: 0.45, brainYLo: -0.4, brainYHi: 0.3,
   };
 
   function circle(cx, cy, r, n) {
@@ -130,6 +132,16 @@
     for (let i = 0; i <= n; i++) {
       const a = lerp(a0, a1, i / n);
       p.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+    }
+    return p;
+  }
+
+  function arcPtsE(cx, cy, rx, ry, a0, a1, step = 0.07) {
+    const n = Math.max(2, Math.ceil((Math.abs(a1 - a0) * Math.max(rx, ry)) / step));
+    const p = [];
+    for (let i = 0; i <= n; i++) {
+      const a = lerp(a0, a1, i / n);
+      p.push([cx + rx * Math.cos(a), cy + ry * Math.sin(a)]);
     }
     return p;
   }
@@ -188,55 +200,61 @@
     const p = [];
     for (let i = 0; i < n; i++) {
       const a = (i / n) * TAU;
-      const r = s * (0.14 + 0.86 * Math.pow(Math.abs(Math.cos(2 * a)), 6));
+      const r = s * (0.2 + 0.8 * Math.pow(Math.abs(Math.cos(2 * a)), 3));
       p.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
     }
     return p;
   }
 
-  // Lobed side-view silhouette, facing +x.  No internal folds.
+  // Big crinkly (scalloped) side-view silhouette, facing +x.  No internal folds.
   function brainShape() {
-    const p = [], n = 140;
+    const p = [], n = 260, S = G.brainScale;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * TAU, c = Math.cos(a), s = Math.sin(a);
-      const top = smooth(clamp((s + 0.35) / 0.4, 0, 1));
-      let k = 1 + lerp(0.015 * Math.cos(7 * a), 0.032 * Math.cos(15 * a), top);
-      k *= 1 + 0.05 * c;
+      let k = 0.93 + 0.075 * Math.pow(Math.abs(Math.sin(6 * a + 0.4)), 0.8)
+        + 0.025 * Math.abs(Math.sin(11 * a + 1)) + 0.02 * Math.cos(3 * a + 1);
+      k *= 1 + 0.04 * c;
       const d = angDiff(a, 1.8 * Math.PI);
-      k *= 1 - 0.11 * Math.exp(-(d * d) / 0.0144);
-      p.push([1.5 * c * k, (s < 0 ? 0.95 : 1.12) * s * k]);
+      k *= 1 - 0.09 * Math.exp(-(d * d) / 0.0144);
+      p.push([1.5 * S * c * k, (s < 0 ? 0.95 : 1.12) * S * s * k]);
     }
     return p;
   }
 
-  function jarShape(w, y0) {
-    return densify([[-w, y0], [w, y0], ...arcPts(0, G.shoulder, w, 0, Math.PI)], 0.12, true);
+  function jarShape(w, y0, ry) {
+    return densify([[-w, y0], [w, y0], ...arcPtsE(0, G.shoulder, w, ry, 0, Math.PI)], 0.12, true);
   }
 
   const SHAPES = (() => {
-    const brain = brainShape();
-    const hi = brain.map(([x, y]) => [x * 0.62 - 0.2, y * 0.5 + 0.42]);
-    const glintPath = [...densify([[-1.72, 2.6], [-1.72, G.shoulder]], 0.1, false), ...arcPts(0, G.shoulder, 1.72, Math.PI, 0.62 * Math.PI).slice(1)];
+    const brain = brainShape(), S = G.brainScale;
+    const hi = brain.map(([x, y]) => [x * 0.62 - 0.2 * S, y * 0.5 + 0.42 * S]);
+    const gw = G.jarW - 0.38, gry = G.domeRy - 0.38;
+    const glintPath = [...densify([[-gw, G.jarY0 + 0.8], [-gw, G.shoulder]], 0.1, false), ...arcPtsE(0, G.shoulder, gw, gry, Math.PI, 0.62 * Math.PI).slice(1)];
     const qhook = [...arcPts(0, 0.28, 0.24, 160 * DEG, -75 * DEG, 0.04), [0.04, -0.12]];
+    // One pincer jaw (the upper one): base at the wrist, curling inward to a tip.
+    const jawLine = [];
+    for (let i = 0; i <= 16; i++) {
+      const u = i / 16;
+      jawLine.push([G.jawLen * 1.05 * u, 0.16 + 0.10 * Math.sin(Math.PI * u * 0.9) - 0.13 * Math.pow(u, 2.5)]);
+    }
+    const R = G.wheelR;
     return {
       brain, hi,
-      cerebellum: ellipse(-0.75, -0.72, 0.55, 0.36),
-      stem: densify([[-0.35, -0.7], [0.0, -0.72], [-0.05, -1.35], [-0.22, -1.38]], 0.1),
-      jarOuter: jarShape(G.jarW, G.jarY0),
-      jarInner: jarShape(G.jarW - G.glassT, G.jarY0 + 0.04),
-      plate: densify([[G.plate[0], G.plate[1]], [G.plate[2], G.plate[1]], [G.plate[2], G.plate[3]], [G.plate[0], G.plate[3]]], 0.12),
+      jarOuter: jarShape(G.jarW, G.jarY0, G.domeRy),
+      jarInner: jarShape(G.jarW - G.glassT, G.jarY0 + 0.04, G.domeRy - G.glassT),
       bed: densify(G.bed, 0.12),
-      lip: densify([[-3.25, 2.12], [3.25, 2.12], [3.25, 2.34], [-3.25, 2.34]], 0.12),
-      tyre: circle(0, 0, G.wheelR),
-      rim: circle(0, 0, 0.58),
-      hub: circle(0, 0, 0.17),
-      spoke: ribbon(densify([[0, 0], [0.56, 0]], 0.1, false), 0.12),
-      knob: [...densify([[-0.13, 8.62], [0.13, 8.62], [0.13, 8.85], [-0.13, 8.85]], 0.08)],
-      knobBall: circle(0, 9.0, 0.22),
+      lip: densify([[-3.55, 3.98], [3.55, 3.98], [3.55, 4.22], [-3.55, 4.22]], 0.12),
+      tyre: circle(0, 0, R),
+      rim: circle(0, 0, R * 0.725),
+      spoke: ribbon(densify([[0, 0], [R * 0.7, 0]], 0.1, false), 0.17),
       glintL: ribbon(glintPath, (u) => 0.02 + 0.13 * Math.sqrt(Math.sin(Math.PI * u)), false),
-      glintR: ribbon(arcPts(0, G.shoulder, 1.75, 0.32 * Math.PI, 0.18 * Math.PI), (u) => 0.01 + 0.08 * Math.sin(Math.PI * u), false),
-      glintLow: ribbon(densify([[1.76, 2.55], [1.76, 3.4]], 0.1, false), (u) => 0.01 + 0.07 * Math.sin(Math.PI * u), false),
+      glintR: ribbon(arcPtsE(0, G.shoulder, gw + 0.03, gry + 0.03, 0.32 * Math.PI, 0.18 * Math.PI), (u) => 0.01 + 0.08 * Math.sin(Math.PI * u), false),
+      glintLow: ribbon(densify([[gw + 0.03, G.jarY0 + 0.8], [gw + 0.03, G.jarY0 + 1.7]], 0.1, false), (u) => 0.01 + 0.07 * Math.sin(Math.PI * u), false),
       qhook,
+      jaw: ribbon(jawLine, (u) => 0.5 - 0.1 * u),
+      sleeve: ribbon(densify([[0, 0], [1.5, 0]], 0.1, false), 0.62),
+      collar: ribbon(densify([[1.44, 0], [1.56, 0]], 0.1, false), 0.74),
+      wrist: circle(0, 0, 0.4),
     };
   })();
 
@@ -267,6 +285,7 @@
     bob: 0.6, bobSpeed: 0.22, sinkY: 0, backX: 0, sway: 0, swaySpeed: 0.3, brainTremble: 0,
     bubbleRate: 0.4,
     bounce: 0, bounceSpeed: 1.6, jiggle: 0, shudder: 0,
+    jaw: 0.25, jawFlap: 0, jawRate: 2, armLift: 0, armExt: 0,
     ovSparkle: 0, ovTear: 0, ovQuestion: 0, ovExclaim: 0, ovThought: 0, ovSweat: 0, ovZzz: 0,
   };
 
@@ -275,39 +294,96 @@
     happy: {
       lidUp: 0.05, lidLo: 0.42, pupil: 0.46, mouthVis: 1, curve: 0.9, open: 0.2,
       bob: 0.9, bobSpeed: 0.45, bounce: 0.07, bounceSpeed: 1.8, bubbleRate: 1, ovSparkle: 1,
+      jaw: 0.5, jawFlap: 0.12, jawRate: 1.6, armLift: 0.15,
     },
     sad: {
       lidUp: 0.42, lidTilt: 0.3, pupil: 0.46, gazeY: -0.55, gazeFollow: 0.5, dartRate: 0.08, dartAmp: 0.1,
       blinkDur: 0.3, mouthVis: 1, mouthW: 0.8, curve: -0.8,
-      bob: 0.4, bobSpeed: 0.12, sinkY: -0.6, bubbleRate: 0.12, ovTear: 1,
+      bob: 0.4, bobSpeed: 0.12, sinkY: -0.35, bubbleRate: 0.12, ovTear: 1,
+      jaw: 0.05, armLift: -0.55, armExt: -0.2,
     },
     confused: {
       lidUp: 0.22, lidAsym: 0.26, lidLo: 0.08, lidLoAsym: 0.1, diverge: 1, dartRate: 1.6, dartAmp: 0.4,
       mouthVis: 1, mouthW: 0.9, curve: -0.15, wave: 1, sway: 0.12, swaySpeed: 0.35, ovQuestion: 1,
+      jaw: 0.35, jawFlap: 0.2, jawRate: 0.7, armLift: 0.2,
     },
     excited: {
       lidUp: 0, eyeScale: 1.15, pupil: 0.3, dartRate: 3, dartAmp: 0.35,
       mouthVis: 1, curve: 1, open: 0.75, bob: 1, bobSpeed: 1.1, bubbleRate: 7, jiggle: 1, ovExclaim: 1,
+      jaw: 0.7, jawFlap: 0.3, jawRate: 4.5, armLift: 0.35, armExt: 0.4,
     },
     thinking: {
       lidUp: 0.25, lidAsym: 0.15, gazeFollow: 0.15, gazeX: 0.55, gazeY: 0.6, dartRate: 0.12, dartAmp: 0.08,
       mouthVis: 0.85, mouthW: 0.6, curve: -0.1, skew: 1,
       bob: 0.5, bobSpeed: 0.15, sway: 0.06, swaySpeed: 0.1, bubbleRate: 0.3, ovThought: 1,
+      jaw: 0.08, armLift: 0.55, armExt: -0.2,
     },
     celebrating: {
       lidUp: 0, lidLo: 0.78, pupilVis: 0, autoBlink: 0, mouthVis: 1, curve: 1, open: 1,
       bob: 1, bobSpeed: 0.9, bounce: 0.1, bounceSpeed: 2.2, bubbleRate: 5, ovSparkle: 1,
+      jaw: 0.6, jawFlap: 0.4, jawRate: 3.5, armLift: 0.6, armExt: 0.5,
     },
     fearful: {
       lidUp: 0, eyeScale: 1.2, pupil: 0.2, tremble: 0.12, dartRate: 2.2, dartAmp: 0.2,
       mouthVis: 1, mouthW: 0.8, curve: -0.3, open: 0.3, zig: 1,
-      bob: 0.3, bobSpeed: 0.3, sinkY: -0.4, backX: -0.4, brainTremble: 0.03, shudder: 0.025,
-      bubbleRate: 0.8, ovSweat: 1,
+      bob: 0.3, bobSpeed: 0.3, sinkY: -0.3, backX: -0.4, brainTremble: 0.03, shudder: 0.025,
+      bubbleRate: 0.8, ovSweat: 1, jaw: 0, jawFlap: 0.04, jawRate: 14, armLift: 0.1, armExt: -0.3,
     },
     sleepy: {
       lidUp: 0.68, lidDroop: 0.32, gazeY: -0.4, gazeFollow: 0.3, dartRate: 0.05, dartAmp: 0.1,
       autoBlink: 0.4, blinkDur: 0.7, mouthVis: 0.6, mouthW: 0.3, open: 0.55,
-      bob: 0.35, bobSpeed: 0.08, sinkY: -0.8, bubbleRate: 0.15, ovZzz: 1,
+      bob: 0.35, bobSpeed: 0.08, sinkY: -0.45, bubbleRate: 0.15, ovZzz: 1,
+      jaw: 0.2, armLift: -0.6, armExt: -0.1,
+    },
+  };
+
+  // ---------------------------------------------------------------- props
+
+  // Props are drawn upright around a grip point at the origin, about one unit
+  // across.  grip is the jaw opening (0..1) that just closes around them.
+  const PROPS = {
+    ball: {
+      grip: 0.75,
+      layers: () => [[circle(0, 0, 0.46), PAL.teal], [ribbon(arcPts(0, 0, 0.3, 110 * DEG, 175 * DEG), 0.09), col('#FFFFFF', 0.7)]],
+    },
+    star: {
+      grip: 0.6,
+      layers: () => {
+        const p = [];
+        for (let i = 0; i < 10; i++) {
+          const a = Math.PI / 2 + (i * Math.PI) / 5, r = i % 2 ? 0.27 : 0.62;
+          p.push([r * Math.cos(a), r * Math.sin(a)]);
+        }
+        return [[densify(p, 0.08), PAL.gold]];
+      },
+    },
+    flag: {
+      grip: 0.14,
+      layers: (t) => {
+        const top = [], bot = [];
+        for (let i = 0; i <= 10; i++) {
+          const u = i / 10, w = 0.06 * u * Math.sin(5 * t - 5 * u);
+          top.push([0.05 + 1.2 * u, 1.9 + w]);
+          bot.push([0.05 + 1.2 * u, 1.25 + w]);
+        }
+        return [[ribbon([[0, -0.3], [0, 1.95]], 0.11), PAL.ink], [top.concat(bot.reverse()), PAL.orange]];
+      },
+    },
+    bulb: {
+      grip: 0.37,
+      layers: (t) => {
+        const pulse = 0.85 + 0.15 * Math.sin(6 * t), out = [
+          [circle(0, 0.78, 0.5), PAL.bulb],
+          [densify([[-0.2, 0.4], [0.2, 0.4], [0.16, 0.1], [-0.16, 0.1]], 0.08), PAL.bulb],
+          [densify([[-0.2, 0.1], [0.2, 0.1], [0.2, -0.25], [-0.2, -0.25]], 0.08), PAL.metal],
+          [ribbon([[-0.14, 0.45], [-0.08, 0.72], [0, 0.55], [0.08, 0.72], [0.14, 0.45]], 0.05), PAL.ink],
+        ];
+        for (let i = 0; i < 5; i++) {
+          const a = (30 + i * 30) * DEG, r0 = 0.68, r1 = 0.68 + 0.3 * pulse;
+          out.push([ribbon([[r0 * Math.cos(a), 0.78 + r0 * Math.sin(a)], [r1 * Math.cos(a), 0.78 + r1 * Math.sin(a)]], 0.07), PAL.gold]);
+        }
+        return out;
+      },
     },
   };
 
@@ -344,7 +420,15 @@
       this._B = { x: 0, y: 0, vx: 0, vy: 0, r: 0, vr: 0 };   // brain offset from rest
       this._F = { x: 0, y: 0, vx: 0, vy: 0 };                 // face offset from rest
       this._S = { s: 0, v: 0, w: 0 };                         // waterline slope + wave
-      this._H = { a: G.handleRest, v: 0 };                    // handle angle
+      this._H = { a: G.armRestAng, v: 0 };                    // arm angle
+      this._E = { e: 0, v: 0 };                               // arm extension beyond rest
+      this._J = { j: 0.25, v: 0 };                            // pincer jaw opening
+      this._K = { x: 0, vx: 0, r: 0, vr: 0 };                 // jar on its mount: sway + tilt
+      this._Z = { z: 0, vz: 0, p: 0, vp: 0 };                 // body on its springs: heave, pitch
+      this._reach = null; this._jawOverride = null;
+      this._prop = null;                                      // held prop {name, t0}
+      this._grab = null;                                      // pending pick-up {name, at, t0}
+      this._props = [];                                       // props lying in the world or falling
       this._bobPh = 0; this._swayPh = 0; this._bouncePh = 0;
       this._pupil = [[0, 0, 0, 0], [0, 0, 0, 0]];             // x, y, vx, vy (normalised)
       this._pupilT = [[0, 0], [0, 0]];
@@ -393,7 +477,7 @@
       if (name === 'blink') this._blinkT = 0;
       else if (name === 'hop') {
         if (this._hopY <= 0 && this._hopV <= 0) {
-          this._hopV = 6.5; this._B.vy -= 1.2; this._H.v += 2;
+          this._hopV = 6.5; this._B.vy -= 1.2; this._H.v += 2; this._Z.vz += 2.5; this._K.vr += 1.2;
         }
       } else if (name === 'bubbles') {
         for (let i = 0; i < 18; i++) this._spawnBubble();
@@ -401,7 +485,7 @@
         const fs = this._face < 0 ? -1 : 1;
         for (let i = 0; i < 70; i++) {
           this._confetti.push({
-            wx: this.x / this.scale + (r() - 0.5) * 1.2 * fs, y: 9.0 + this._lift(),
+            wx: this.x / this.scale + (r() - 0.5) * 1.2 * fs, y: 9.5 + this._lift(),
             vx: (r() - 0.5) * 8, vy: 5 + r() * 6,
             rot: r() * TAU, vr: (r() - 0.5) * 14, flip: 4 + r() * 8,
             w: 0.12 + r() * 0.1, h: 0.07 + r() * 0.05,
@@ -411,6 +495,46 @@
         }
       } else throw new Error(`BrianWagon: unknown trigger "${name}"`);
       return this;
+    }
+
+    // Point the arm at a scene point, extending it to reach; null relaxes it.
+    reach(x, y) { this._reach = x == null ? null : [x, y]; return this; }
+
+    // Override the pincer opening (0 clenched .. 1 wide); null = emotion default.
+    jaw(v) { this._jawOverride = v == null ? null : v; return this; }
+
+    // Pick up a prop.  With { at: [x, y] } it lies at that scene point and the
+    // arm reaches for it; otherwise it pops into the jaws.
+    grab(name, { at = null } = {}) {
+      if (!PROPS[name]) throw new Error(`BrianWagon: unknown prop "${name}"`);
+      this._grab = null;
+      if (this._prop) this.release();
+      if (at) {
+        this._grab = { name, at: at.slice(), t0: this.t };
+        this._reach = at.slice();
+      } else this._prop = { name, t0: this.t };
+      return this;
+    }
+
+    release() {
+      this._grab = null;
+      const h = this._prop;
+      if (h) {
+        const tip = this._armTip(1), fs = this._face < 0 ? -1 : 1;
+        this._props.push({
+          name: h.name, wx: this.x / this.scale + tip[0] * fs, y: tip[1] + this._lift() + this._Z.z,
+          vx: 0.6 * fs * (this._v > 0 ? 1 : 0.5), vy: 1, rot: 0, vr: 0, age: 0, rest: 0, life: 1.6, bounced: false,
+        });
+        this._prop = null;
+        this._jawKick = this.t;
+      }
+      return this;
+    }
+
+    // Arm geometry in the body frame: the wrist, and the grip point between the jaws.
+    _armTip(k) {
+      const a = this._H.a, L = G.armRest + this._E.e + G.jawLen * 0.85 * k;
+      return [G.pivot[0] + Math.cos(a) * L, G.pivot[1] + Math.sin(a) * L];
     }
 
     get moving() { return Math.abs(this._v) > 0.05; }
@@ -425,10 +549,45 @@
       this._updateEmotion();
       this._updateMove(dt);
       this._updateEyes(dt);
+      this._updateArm();
       const n = Math.ceil(dt * 240), h = dt / n;
       for (let i = 0; i < n; i++) this._physics(h);
       this._updateParticles(dt);
       return this;
+    }
+
+    // Work out what the arm, its extension and the jaws are aiming for.
+    _updateArm() {
+      const P = this.p, t = this.t, g = this._grab;
+      let a = (this.moving ? G.armMoveAng : G.armRestAng) + P.armLift;
+      let e = P.armExt;
+      const reach = this._reach ? this._toLocal(this._reach[0], this._reach[1]) : null;
+      if (reach) {
+        const dx = reach[0] - G.pivot[0], dy = reach[1] - this._Z.z - G.pivot[1];
+        a = Math.atan2(dy, dx);
+        e = Math.hypot(dx, dy) - G.jawLen * 0.85 - G.armRest;
+      }
+      this._armT = { a: clamp(a, G.armLo, G.armHi), e: clamp(e, -0.4, G.armMaxExt) };
+
+      let jaw = P.jaw + P.jawFlap * Math.tanh(3 * Math.sin(TAU * P.jawRate * t));
+      if (this._prop) jaw = PROPS[this._prop.name].grip;
+      else if (g) jaw = 0.9;
+      if (this._jawOverride != null) jaw = this._jawOverride;
+      if (this._jawKick != null) {
+        if (t - this._jawKick < 0.35) jaw = Math.max(jaw, 0.9);
+        else this._jawKick = null;
+      }
+      this._jawT = clamp(jaw, 0, 1);
+
+      // Close on the prop once the jaws are around it.
+      if (g) {
+        const tip = this._armTip(1), at = this._toLocal(g.at[0], g.at[1]);
+        if ((Math.hypot(tip[0] - at[0], tip[1] + this._Z.z - at[1]) < 0.4 && this._J.j > 0.6) || t - g.t0 > 3.5) {
+          this._prop = { name: g.name, t0: t };
+          this._grab = null;
+          this._reach = null;
+        }
+      }
     }
 
     _updateEmotion() {
@@ -483,10 +642,10 @@
       for (let i = 0; i < 2; i++) {
         let g;
         if (look) {
-          const ex = G.brain[0] + this._F.x + G.face[0] + (i ? 1 : -1) * G.eyeDX;
+          const ex = G.brain[0] + this._F.x + G.face[0] + (i ? 1 : -1) * G.eyeDX * G.faceK;
           const ey = G.brain[1] + this._F.y + G.face[1];
           const vx = look[0] - ex, vy = look[1] - ey, m = Math.hypot(vx, vy) || 1;
-          const k = Math.min(1, m / 2.5) / m;
+          const k = Math.min(1, m / 3.5) / m;
           g = [vx * k, vy * k];
         } else g = idle.slice();
         g[0] = g[0] * P.gazeFollow + P.gazeX + P.diverge * div[i][0] + this._dart[i][0] * P.dartAmp;
@@ -545,10 +704,29 @@
       S.s = clamp(S.s + h * S.v, -0.35, 0.35);
       S.w *= Math.exp(-h * 1.2);
 
-      // Handle: droops at rest, lifts when pulled, drags on acceleration.
-      const ht = this.moving ? G.handleMove : G.handleRest;
-      H.v += h * (-66.7 * (H.a - ht) - 5.7 * H.v + aL * 1.5);
-      H.a = clamp(H.a + h * H.v, 8 * DEG, 80 * DEG);
+      // Arm: droops at rest, lifts when pulled, drags on acceleration.
+      const AT = this._armT, E = this._E, J = this._J, Z = this._Z;
+      H.v += h * (-66.7 * (H.a - AT.a) - 5.7 * H.v + aL * 1.5);
+      H.a = clamp(H.a + h * H.v, G.armLo, G.armHi);
+      E.v += h * (-90 * (E.e - AT.e) - 6 * E.v);           // a bit of overshoot
+      E.e = clamp(E.e + h * E.v, -0.5, G.armMaxExt + 0.3);
+      J.v += h * (-300 * (J.j - this._jawT) - 22 * J.v);   // quick snap
+      J.j = clamp(J.j + h * J.v, -0.1, 1.15);
+
+      // Suspension: the body rides its springs, cartoony (light damping).
+      const vz0 = Z.vz;
+      Z.vz += h * (-95 * Z.z - 2.4 * Z.vz);
+      Z.z = clamp(Z.z + h * Z.vz, -0.55, 0.55);
+      Z.vp += h * (-120 * Z.p - 3 * Z.vp + 2.4 * aL);
+      Z.p = clamp(Z.p + h * Z.vp, -0.22, 0.22);
+      B.vy -= (Z.vz - vz0) * 0.6;
+
+      // Jar mount: sprung, so the jar lags and tilts behind quick moves.
+      const K = this._K;
+      K.vx += h * (-70 * K.x - 2.5 * K.vx - 2 * aL);
+      K.x = clamp(K.x + h * K.vx, -0.3, 0.3);
+      K.vr += h * (-70 * K.r - 2.5 * K.vr - 1.6 * aL);
+      K.r = clamp(K.r + h * K.vr, -0.2, 0.2);
 
       // Hop.
       if (this._hopY > 0 || this._hopV > 0) {
@@ -556,7 +734,7 @@
         this._hopY += this._hopV * h;
         if (this._hopY <= 0) {
           this._hopY = 0; this._hopV = 0;
-          B.vy -= 1.4; S.w = 0.1; H.v -= 3;
+          B.vy -= 1.4; S.w = 0.1; H.v -= 3; Z.vz -= 6; Z.vp -= 0.3 * Math.sign(this._v || 1); this._K.vr -= 2.2; this._K.vx += 0.8;
         }
       }
 
@@ -574,7 +752,7 @@
     _spawnBubble() {
       const r = this.rng;
       this._bubbles.push({
-        x: (r() * 2 - 1) * 1.75, y: 2.4 + r() * 0.6, r: 0.04 + r() * 0.08,
+        x: (r() * 2 - 1) * 2.5, y: 4.4 + r() * 0.6, r: 0.04 + r() * 0.08,
         v: 0.5 + r() * 0.6, ph: r() * TAU, front: r() < 0.5, age: 0, id: Math.floor(r() * 1e9),
       });
     }
@@ -587,6 +765,16 @@
         b.y += (b.v + b.r * 5) * dt;
         b.x += Math.cos(b.age * 5 + b.ph) * 0.12 * dt;
         return b.y + b.r < this._waterY(b.x) - 0.02;
+      });
+      this._props = this._props.filter((p) => {
+        p.age += dt;
+        p.vy -= 20 * dt; p.wx += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+        if (p.y <= 0.5 && p.vy < 0) {
+          p.y = 0.5;
+          if (!p.bounced) { p.vy *= -0.35; p.bounced = true; p.vx *= 0.5; p.vr = p.vx * 1.5; }
+          else { p.vy = 0; p.vx *= Math.exp(-6 * dt); p.vr *= Math.exp(-6 * dt); p.rest += dt; }
+        }
+        return p.rest < p.life;
       });
       this._confetti = this._confetti.filter((c) => {
         c.age += dt;
@@ -622,9 +810,18 @@
       ctx.translate(shud, lift);
       ctx.rotate(jig);
       ctx.scale(fxs, 1);
-      this._drawHandle(ctx);
+
+      // Body (arm, jar, bed) rides on its springs; the wheels stay planted.
+      const Z = this._Z;
+      ctx.save();
+      ctx.translate(0, G.wheelR + Z.z);
+      ctx.rotate(Z.p);
+      ctx.translate(0, -G.wheelR);
+      this._drawArm(ctx);
       this._drawJar(ctx);
       this._drawWagon(ctx);
+      ctx.restore();
+      this._drawWheels(ctx);
       ctx.restore();
 
       ctx.save();
@@ -632,6 +829,7 @@
       this._drawOverlays(ctx, fx);
       ctx.restore();
 
+      this._drawWorldProps(ctx);
       this._drawConfetti(ctx);
       ctx.restore();
       return this;
@@ -671,7 +869,7 @@
     }
 
     // Fill one or more polygons (even-odd, so a second polygon cuts a hole).
-    _fill(ctx, polys, c, shadow = true) {
+    _fill(ctx, polys, c, shadow = true, outline = 0) {
       if (!Array.isArray(polys[0][0])) polys = [polys];
       if (this.opts.shadows && shadow && c.a === 1) {
         const M = ctx.getTransform(), inv = M.inverse();
@@ -682,12 +880,14 @@
         for (const p of polys) this._path(ctx, p);
         ctx.fillStyle = PAL.shadow.css;
         ctx.fill('evenodd');
+        if (outline > 0) { ctx.lineWidth = outline; ctx.lineJoin = 'round'; ctx.strokeStyle = PAL.shadow.css; ctx.stroke(); }
         ctx.restore();
       }
       ctx.beginPath();
       for (const p of polys) this._path(ctx, p);
       ctx.fillStyle = c.css;
       ctx.fill('evenodd');
+      if (outline > 0) { ctx.lineWidth = outline; ctx.lineJoin = 'round'; ctx.strokeStyle = c.css; ctx.stroke(); }
     }
 
     _shape(ctx, pts, id, c, shadow = true) {
@@ -702,19 +902,67 @@
       ctx.clip();
     }
 
-    _drawHandle(ctx) {
-      const [px, py] = G.pivot, a = this._H.a, L = G.handleLen;
-      const ca = Math.cos(a), sa = Math.sin(a);
-      const ex = px + ca * L, ey = py + sa * L;
-      this._shape(ctx, ribbon(densify([[px, py], [ex, ey]], 0.1, false), 0.14), 'handle', PAL.wagon);
-      const cx = ex + ca * 0.2, cy = ey + sa * 0.2;
-      const ring = [this._boil(ellipse(cx, cy, 0.25, 0.25, 36), 'grip'), this._boil(ellipse(cx, cy, 0.13, 0.13, 24), 'grip')];
-      this._fill(ctx, ring, PAL.wagon);
+    // Layers of a prop, boiled and filled.  Drawn upright around the origin.
+    _drawProp(ctx, name, key) {
+      PROPS[name].layers(this.t).forEach(([pts, c], i) => this._shape(ctx, pts, `prop${key}${name}${i}`, c));
+    }
+
+    // Telescoping arm ending in a two-jaw pincer, with any held prop.
+    _drawArm(ctx) {
+      const A = this._H, L = G.armRest + this._E.e;
+      ctx.save();
+      ctx.translate(G.pivot[0], G.pivot[1]);
+      ctx.rotate(A.a);
+      this._shape(ctx, ribbon(densify([[0.9, 0], [L, 0]], 0.1, false), 0.4), 'rod', PAL.wagonShade);
+      this._shape(ctx, SHAPES.sleeve, 'sleeve', PAL.wagon);
+      this._shape(ctx, SHAPES.collar, 'collar', PAL.wagonShade, false);
+      ctx.translate(L, 0);
+      this._shape(ctx, SHAPES.wrist, 'wrist', PAL.wagonShade);
+
+      const held = this._prop;
+      if (held) {
+        // Props stay upright and swing a little with the arm.
+        ctx.save();
+        ctx.translate(G.jawLen * 0.85, 0);
+        ctx.rotate(-A.a - 0.04 * A.v);
+        const k = backOut(clamp((this.t - held.t0) / 0.25, 0, 1));
+        ctx.scale(k, k);
+        this._drawProp(ctx, held.name, 'h');
+        ctx.restore();
+      }
+      const phi = 0.03 + this._J.j * 0.75;
+      for (const side of [1, -1]) {
+        ctx.save();
+        ctx.scale(1, side);
+        ctx.rotate(phi);
+        this._shape(ctx, SHAPES.jaw, 'jaw' + side, PAL.wagon);
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    // Props lying where they were left, being fetched, or falling.
+    _drawWorldProps(ctx) {
+      const x0 = this.x / this.scale;
+      const put = (name, wx, y, rot, alpha, key) => {
+        ctx.save();
+        ctx.globalAlpha = clamp(alpha, 0, 1);
+        ctx.translate(wx - x0, y);
+        ctx.rotate(rot);
+        this._drawProp(ctx, name, key);
+        ctx.restore();
+      };
+      const g = this._grab;
+      if (g) put(g.name, g.at[0] / this.scale, (this.y - g.at[1]) / this.scale, 0, 1, 'g');
+      this._props.forEach((p, i) => put(p.name, p.wx, p.y, p.rot, (p.life - p.rest) / 0.5, 'w' + i));
     }
 
     _drawJar(ctx) {
-      const P = this.p, B = this._B, F = this._F;
-      this._shape(ctx, SHAPES.plate, 'plate', PAL.plate);
+      const P = this.p, B = this._B, F = this._F, K = this._K;
+      ctx.save();
+      ctx.translate(K.x, G.jarPivotY);
+      ctx.rotate(K.r);
+      ctx.translate(0, -G.jarPivotY);
       const outer = this._boil(SHAPES.jarOuter, 'jar');
       const inner = this._boil(SHAPES.jarInner, 'jar');
       this._fill(ctx, inner, PAL.glass, false);
@@ -723,8 +971,8 @@
       this._clip(ctx, inner);
 
       const water = [];
-      for (let x = 2.3; x >= -2.3 - 1e-9; x -= 0.1) water.push([x, this._waterY(x)]);
-      this._shape(ctx, [[-2.3, G.jarY0 - 0.2], [2.3, G.jarY0 - 0.2], ...water], 'fluid', PAL.fluid);
+      for (let x = 3.2; x >= -3.2 - 1e-9; x -= 0.1) water.push([x, this._waterY(x)]);
+      this._shape(ctx, [[-3.2, G.jarY0 - 0.2], [3.2, G.jarY0 - 0.2], ...water], 'fluid', PAL.fluid);
       const sheen = water.map(([x, y]) => [x, y - 0.04]).reverse();
       this._fill(ctx, this._boil(ribbon(sheen, 0.05, false), 'sheen'), PAL.sheen, false);
 
@@ -734,8 +982,6 @@
       ctx.save();
       ctx.translate(G.brain[0] + B.x, G.brain[1] + B.y);
       ctx.rotate(B.r);
-      this._shape(ctx, SHAPES.stem, 'stem', PAL.brainDeep);
-      this._shape(ctx, SHAPES.cerebellum, 'cerebellum', PAL.brainDeep);
       const brain = this._shape(ctx, SHAPES.brain, 'brain', PAL.brain);
       ctx.save();
       this._clip(ctx, brain);
@@ -747,6 +993,7 @@
       ctx.save();
       ctx.translate(G.brain[0] + F.x + G.face[0], G.brain[1] + F.y + G.face[1]);
       ctx.rotate(B.r * 0.8);
+      ctx.scale(G.faceK, G.faceK);
       this._drawEyes(ctx);
       const mouth = this._mouthPts();
       if (mouth) {
@@ -760,7 +1007,7 @@
         ctx.save();
         ctx.globalAlpha = Math.min(1, (1 - u) / 0.25);
         ctx.translate(-G.eyeDX - r * 0.35, -r * 0.9 - 0.7 * u);
-        const sc = 0.28 * backOut(clamp(P.ovTear, 0, 1));
+        const sc = 0.56 * backOut(clamp(P.ovTear, 0, 1));
         ctx.scale(sc, sc);
         this._sticker(ctx, GLYPH.drop, 'tear', PAL.drop, sc);
         ctx.restore();
@@ -775,8 +1022,7 @@
       this._shape(ctx, SHAPES.glintL, 'glintL', PAL.glint, false);
       this._shape(ctx, SHAPES.glintR, 'glintR', PAL.glint, false);
       this._shape(ctx, SHAPES.glintLow, 'glintLow', PAL.glint, false);
-      this._shape(ctx, SHAPES.knob, 'knob', PAL.knob);
-      this._shape(ctx, SHAPES.knobBall, 'knobBall', PAL.knob);
+      ctx.restore();
     }
 
     _drawBubble(ctx, b) {
@@ -852,16 +1098,17 @@
     // to keep boil and backing width constant in rig units.
     _sticker(ctx, build, id, c, sc) {
       const amp = this.opts.boil / Math.max(sc, 0.2);
-      if (this.opts.stickers) {
-        this._fill(ctx, build(0.06 / Math.max(sc, 0.2)).map((p, j) => this._boil(p, id + 'b' + j, amp)), PAL.white);
-      }
-      this._fill(ctx, build(0).map((p, j) => this._boil(p, id + j, amp)), c, !this.opts.stickers);
+      // The backing is the glyph itself, stroked with a round join, so the
+      // border has an even width all round and shares the glyph's boil.
+      const polys = build(0).map((p, j) => this._boil(p, id + j, amp));
+      if (this.opts.stickers) this._fill(ctx, polys, PAL.white, true, 0.12 / Math.max(sc, 0.2));
+      this._fill(ctx, polys, c, !this.opts.stickers);
     }
 
     _drawOverlays(ctx, fx) {
       const P = this.p, t = this.t, B = this._B;
       const fs = fx < 0 ? -1 : 1;
-      const ax = B.x * 0.6, ay = B.y * 0.6;
+      const ax = B.x * 0.6 + this._K.x, ay = B.y * 0.6;
       const put = (id, glyph, c, lx, ly, size, rot, pres, alpha = 1) => {
         if (pres < 0.01 || alpha <= 0) return;
         const sc = size * backOut(clamp(pres, 0, 1));
@@ -877,33 +1124,33 @@
 
       if (P.ovQuestion > 0.01) {
         const q = P.ovQuestion;
-        put('q1', GLYPH.question, PAL.ink, 2.7, 8.6, 0.9, 0.15 * Math.sin(TAU * 0.6 * t), q);
-        put('q2', GLYPH.question, PAL.ink, 3.35, 9.3, 0.55, -0.2 * Math.sin(TAU * 0.5 * t + 1), clamp(q * 2 - 1, 0, 1));
+        put('q1', GLYPH.question, PAL.ink, 3.7, 9.7, 1.8, 0.15 * Math.sin(TAU * 0.6 * t), q);
+        put('q2', GLYPH.question, PAL.ink, 5.0, 11.0, 1.1, -0.2 * Math.sin(TAU * 0.5 * t + 1), clamp(q * 2 - 1, 0, 1));
       }
       if (P.ovExclaim > 0.01) {
-        put('ex', GLYPH.exclaim, PAL.ink, 2.7, 8.7 + 0.12 * Math.abs(Math.sin(TAU * 1.6 * t)), 0.95, 0.1, P.ovExclaim);
+        put('ex', GLYPH.exclaim, PAL.ink, 3.7, 9.8 + 0.24 * Math.abs(Math.sin(TAU * 1.6 * t)), 1.9, 0.1, P.ovExclaim);
       }
       if (P.ovSparkle > 0.01) {
-        [[2.6, 8.4, 0.55], [-2.6, 7.6, 0.4], [1.5, 9.6, 0.35]].forEach(([x, y, s], i) => {
+        [[4.0, 9.3, 1.1], [-4.5, 8.6, 0.8], [1.6, 10.7, 0.7]].forEach(([x, y, s], i) => {
           const tw = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(TAU * 1.1 * t + i * 2.1));
           put('sp' + i, GLYPH.sparkle, PAL.gold, x, y, s * tw, 0.2 * i, P.ovSparkle);
         });
       }
       if (P.ovThought > 0.01) {
-        [[1.8, 9.1, 0.09], [2.25, 9.5, 0.13], [2.8, 9.95, 0.18]].forEach(([x, y, r], i) => {
+        [[2.4, 9.6, 0.18], [3.3, 10.3, 0.26], [4.4, 11.1, 0.36]].forEach(([x, y, r], i) => {
           const pulse = 1 + 0.15 * Math.sin(TAU * 0.8 * t - i * 0.9);
           put('th' + i, GLYPH.dot, PAL.ink, x, y, 2 * r * pulse, 0, clamp(P.ovThought * 3 - i, 0, 1));
         });
       }
       if (P.ovSweat > 0.01) {
         const u = (t / 1.8) % 1;
-        put('sw', GLYPH.drop, PAL.drop, 2.0, 7.5 - 0.4 * u, 0.45, 0, P.ovSweat, Math.min(1, (1 - u) / 0.25));
+        put('sw', GLYPH.drop, PAL.drop, 4.2, 8.4 - 0.6 * u, 0.9, 0, P.ovSweat, Math.min(1, (1 - u) / 0.25));
       }
       if (P.ovZzz > 0.01) {
         for (let i = 0; i < 3; i++) {
           const u = (t * 0.35 + i / 3) % 1;
           const a = Math.min(1, u / 0.15) * Math.min(1, (1 - u) / 0.3);
-          put('z' + i, GLYPH.zed, PAL.ink, 1.6 + u * 1.3 + 0.12 * Math.sin(u * TAU), 8.9 + u * 1.5, 0.3 + 0.35 * u, -0.15, P.ovZzz, a);
+          put('z' + i, GLYPH.zed, PAL.ink, 2.5 + u * 1.9 + 0.2 * Math.sin(u * TAU), 9.6 + u * 2.0, 0.6 + 0.7 * u, -0.15, P.ovZzz, a);
         }
       }
     }
@@ -925,12 +1172,17 @@
     _drawWagon(ctx) {
       this._shape(ctx, SHAPES.bed, 'bed', PAL.wagon);
       this._shape(ctx, SHAPES.lip, 'lip', PAL.wagonShade);
-      this._shape(ctx, circle(G.pivot[0] + 0.05, G.pivot[1] + 0.1, 0.1), 'bolt', PAL.wagonShade);
+      this._shape(ctx, circle(G.pivot[0] + 0.05, G.pivot[1], 0.22), 'bolt', PAL.wagonShade);
+    }
+
+    _drawWheels(ctx) {
       [-1, 1].forEach((side, i) => {
+        const wx = side * G.wheelX;
         ctx.save();
-        ctx.translate(side * G.wheelX, G.wheelR);
+        ctx.translate(wx, G.wheelR);
         this._shape(ctx, SHAPES.tyre, 'tyre' + i, PAL.tyre);
         this._shape(ctx, SHAPES.rim, 'rim' + i, PAL.wagonShade, false);
+        ctx.save();
         ctx.rotate(this._wheelA);
         for (let k = 0; k < 5; k++) {
           ctx.save();
@@ -938,7 +1190,8 @@
           this._shape(ctx, SHAPES.spoke, 'spoke' + i + k, PAL.wagon, false);
           ctx.restore();
         }
-        this._shape(ctx, SHAPES.hub, 'hub' + i, PAL.wagon, false);
+        this._shape(ctx, circle(0, 0, G.wheelR * 0.21), 'hub' + i, PAL.wagonShade, false);
+        ctx.restore();
         ctx.restore();
       });
     }
@@ -946,6 +1199,7 @@
 
   BrianWagon.EMOTIONS = Object.keys(PRESETS);
   BrianWagon.TRIGGERS = ['blink', 'hop', 'confetti', 'bubbles'];
+  BrianWagon.PROPS = Object.keys(PROPS);
   BrianWagon.PRESETS = PRESETS;
   BrianWagon.NEUTRAL = NEUTRAL;
 

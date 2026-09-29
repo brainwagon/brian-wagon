@@ -1,0 +1,27 @@
+{
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "duration": 16,
+  "seed": 7,
+  "shadows": false,
+  "rig": { "x": 400, "y": 940, "scale": 40, "facing": "right", "emotion": "neutral" },
+  "cues": [
+    { "t": 0.5, "grab": "ball" },
+    { "t": 1.5, "moveTo": { "x": 1100, "seconds": 2.5 } },
+    { "t": 4.5, "release": true },
+    { "t": 5.0, "emotion": "happy" },
+    { "t": 5.5, "grab": { "prop": "star", "at": [1500, 900] } },
+    { "t": 5.5, "moveTo": { "x": 1250, "seconds": 1.5 } },
+    { "t": 8.0, "emotion": "thinking" },
+    { "t": 8.0, "grab": "bulb" },
+    { "t": 10.0, "emotion": "excited" },
+    { "t": 10.0, "release": true },
+    { "t": 10.5, "grab": "flag" },
+    { "t": 11.0, "reach": [1700, 300] },
+    { "t": 13.0, "reach": null },
+    { "t": 13.0, "moveTo": { "x": 500, "seconds": 2.5 } },
+    { "t": 14.5, "release": true, "jaw": 1 },
+    { "t": 15.2, "jaw": null }
+  ]
+}

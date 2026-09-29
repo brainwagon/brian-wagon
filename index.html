@@ -41,28 +41,35 @@
       <button data-trigger="confetti">Confetti</button><button data-trigger="bubbles">Bubbles</button>
     </div>
 
+    <h2>Pincer</h2>
+    <div class="row" id="props"></div>
+    <div class="row"><button id="release">Release</button><button id="reachBtn" title="Arm reaches for the mouse">Reach mouse</button></div>
+    <label>Jaw <input id="jaw" type="range" min="0" max="1" step="0.05" value="0.25"><output id="jawOut">auto</output></label>
+    <label><input id="jawAuto" type="checkbox" checked> Jaw follows emotion</label>
+
     <h2>Motion</h2>
     <div class="row"><button id="faceL">◀ Face</button><button id="faceR">Face ▶</button><button id="center">Centre</button></div>
     <label><input id="follow" type="checkbox" checked> Eyes follow mouse</label>
 
     <h2>Look</h2>
-    <label>Size <input id="size" type="range" min="8" max="90" step="1" value="20"><output id="sizeOut">20%</output></label>
+    <label>Size <input id="size" type="range" min="8" max="90" step="1" value="50"><output id="sizeOut">50%</output></label>
     <label>Drift <input id="drift" type="range" min="0" max="0.6" step="0.01" value="0.3"><output id="driftOut">0.3</output></label>
     <label>Boil <input id="boil" type="range" min="0" max="0.08" step="0.005" value="0.03"><output id="boilOut">0.03</output></label>
     <label><input id="shadows" type="checkbox"> Drop shadows</label>
     <label>Background
-      <select id="bg"><option value="checker">Checker</option><option value="light">Light</option><option value="grey">Grey</option><option value="dark">Dark</option></select>
+      <select id="bg"><option value="checker">Checker</option><option value="light">Light</option><option value="grey" selected>Grey</option><option value="dark">Dark</option></select>
     </label>
     <label>Seed <input id="seed" type="number" value="7" style="width:6em"> <button id="reseed">Apply</button></label>
 
     <h2>Output</h2>
     <div class="row"><button id="pause">Pause</button><button id="step">Step</button><button id="save">Save PNG (1080p)</button></div>
-    <p class="hint">Click the stage to drive there. Keys: 1–9 emotions, ←/→ face, space pause, B blink, H hop, C confetti, S save.</p>
+    <p class="hint">Click the stage to drive there. Keys: 1–9 emotions, ←/→ face, space pause, B blink, H hop, C confetti, S save, P cycle props, R release.</p>
   </aside>
 </main>
 <script>
   const W = 960, H = 540, FPS = 30;
-  let b, paused = false, stepOnce = false;
+  let propIx = -1;
+  let b, paused = false, stepOnce = false, reaching = false;
   const $ = (id) => document.getElementById(id);
 
   function makeRig(seed) {
@@ -78,7 +85,7 @@
   function setup() {
     createCanvas(W, H).parent('stage');
     frameRate(FPS);
-    $('stage').querySelector('canvas').classList.add('checker');
+    $('stage').querySelector('canvas').classList.add('grey');
     makeRig(+$('seed').value);
 
     for (const [i, e] of BrianWagon.EMOTIONS.entries()) {
@@ -90,6 +97,16 @@
     }
     markEmotion();
     document.querySelectorAll('[data-trigger]').forEach((el) => (el.onclick = () => b.trigger(el.dataset.trigger)));
+    for (const p of BrianWagon.PROPS) {
+      const btn = document.createElement('button');
+      btn.textContent = p;
+      btn.onclick = () => b.grab(p);
+      $('props').append(btn);
+    }
+    $('release').onclick = () => b.release();
+    $('reachBtn').onclick = () => { reaching = !reaching; $('reachBtn').classList.toggle('on', reaching); if (!reaching) b.reach(null); };
+    $('jaw').oninput = () => { $('jawAuto').checked = false; $('jawOut').textContent = $('jaw').value; b.jaw(+$('jaw').value); };
+    $('jawAuto').onchange = () => { if ($('jawAuto').checked) { b.jaw(null); $('jawOut').textContent = 'auto'; } else b.jaw(+$('jaw').value); };
     $('faceL').onclick = () => b.face('left');
     $('faceR').onclick = () => b.face('right');
     $('center').onclick = () => b.moveTo(W / 2, 1.5);
@@ -122,6 +139,7 @@
     clear();
     const inside = mouseX >= 0 && mouseX < width && mouseY >= 0 && mouseY < height;
     b.lookAt(...($('follow').checked && inside ? [mouseX, mouseY] : [null]));
+    if (reaching) b.reach(...(inside ? [mouseX, mouseY] : [null]));
     if (!paused || stepOnce) { b.update(1 / FPS); stepOnce = false; }
     b.draw();   // global mode: draws on the sketch canvas
   }
@@ -143,6 +161,8 @@
     else if (key === 'h') b.trigger('hop');
     else if (key === 'c') b.trigger('confetti');
     else if (key === 's') savePng();
+    else if (key === 'p') { propIx = (propIx + 1) % BrianWagon.PROPS.length; b.grab(BrianWagon.PROPS[propIx]); }
+    else if (key === 'r') b.release();
   }
 
   // Transparent 1920x1080 still of the current frame.
