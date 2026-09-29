@@ -1256,8 +1256,15 @@
           this._stageShape(ctx, pts, `cur${tag}${k}`, tones[k]);
         }
         const ex = e(15);
-        this._stageShape(ctx, ribbon([[X(ex - 2.6), 14.5], [X(ex + 0.3), 15.4]], 0.4), `tie${tag}`, '#e0b040');
-        this._stageShape(ctx, teardrop(X(ex + 0.1), 16.5, 0.7).map(([x, y]) => [x, y]), `tassel${tag}`, '#e0b040');
+        // The tie-back cord runs in from off screen and ends in a tassel: a ball over a
+        // triangular skirt with a jagged fringe.
+        const tx = X(ex + 0.3);
+        this._stageShape(ctx, ribbon([[X(-1), 13.9], [tx, 15.4]], 0.4), `tie${tag}`, '#e0b040');
+        const fringe = [];
+        for (let i = 0; i <= 6; i++) fringe.push([tx + 0.7 - (1.4 * i) / 6, i % 2 ? 17.3 : 17.65]);
+        this._stageShape(ctx, densify([[tx - 0.22, 15.95], [tx + 0.22, 15.95], ...fringe], 0.15), `tassel${tag}`, '#e0b040');
+        this._stageShape(ctx, ribbon([[tx - 0.3, 16.15], [tx + 0.3, 16.15]], 0.13), `neck${tag}`, '#b98a2a');
+        this._stageShape(ctx, circle(tx, 15.75, 0.33, 24), `ball${tag}`, '#f0c85a');
       }
       ctx.restore();
     }
