@@ -254,7 +254,7 @@
       glintR: ribbon(arcPtsE(0, G.shoulder, gw + 0.03, gry + 0.03, 0.32 * Math.PI, 0.18 * Math.PI), (u) => 0.01 + 0.08 * Math.sin(Math.PI * u), false),
       glintLow: ribbon(densify([[gw + 0.03, G.jarY0 + 0.8], [gw + 0.03, G.jarY0 + 1.7]], 0.1, false), (u) => 0.01 + 0.07 * Math.sin(Math.PI * u), false),
       qhook,
-      jaw: ribbon(jawLine, (u) => 0.5 - 0.1 * u),
+      jaw: ribbon(jawLine, (u) => 0.44 - 0.2 * u),   // tapers to a slim tip so a gripped letter shows around it
       sleeve: ribbon(densify([[0, 0], [1.5, 0]], 0.1, false), 0.62),
       collar: ribbon(densify([[1.44, 0], [1.56, 0]], 0.1, false), 0.74),
       wrist: circle(0, 0, 0.4),
@@ -787,7 +787,7 @@
       if (w > 0.01) jaw = lerp(jaw, 0.55 + 0.3 * Math.sin(TAU * 1.8 * t + 1), w);
       if (this._prop) jaw = PROPS[this._prop.name].grip;
       else if (g) jaw = 0.9;
-      else if (c) jaw = c.stage === 'fetch' ? 0.9 : 0.3;
+      else if (c) jaw = c.stage === 'fetch' ? 0.9 : 0.36;
       if (this._jawOverride != null) jaw = this._jawOverride;
       if (this._jawKick != null) {
         if (t - this._jawKick < 0.35) jaw = Math.max(jaw, 0.9);
@@ -1045,6 +1045,7 @@
 
       const staged = this._stage && o.x == null && o.y == null && o.scale == null;
       if (staged) this._drawStageBack(ctx);
+      this._sceneM = ctx.getTransform(); this._sceneR = [x, y, s / this.scale];   // for the letter held between the jaws
       this._drawLetters(ctx, x, y, s / this.scale);
 
       ctx.save();
@@ -1148,42 +1149,50 @@
       ctx.clip();
     }
 
+    // Index of the letter currently gripped in the jaws (drawn between them, in _drawArm), or -1.
+    _gripped() { return this._carry && this._carry.stage === 'held' ? this._carry.i : -1; }
+
     // Cut-paper letters, in scene pixels, behind everything else.  (x, y, r) place
-    // the rig when draw() is given overrides, so letters scale with it.
+    // the rig when draw() is given overrides, so letters scale with it.  A gripped
+    // letter is left out here: it is drawn between the two jaws.
     _drawLetters(ctx, x, y, r) {
+      const held = this._gripped();
+      this._letters.forEach((_, i) => { if (i !== held) this._paintLetter(ctx, i, x, y, r); });
+    }
+
+    _paintLetter(ctx, i, x, y, r) {
       const a = clamp(this._lAlpha, 0, 1);
-      if (!this._letters.length || a <= 0.001) return;
+      if (a <= 0.001) return;
       const amp = (this.opts.boil * this.scale * 0.6);
       // One letter's strokes overlap each other, so fading them one by one would
       // double the opacity where they cross.  Below full opacity each letter is
       // drawn once at full strength on a scratch canvas and faded as a whole.
       const M = ctx.getTransform(), d = Math.hypot(M.a, M.b) || 1;
-      this._letters.forEach((L, i) => {
-        const g = LETTERS[L.ch], k = L.k * r, cx = x + (L.x - this.x) * r, cy = y + (L.y - this.y) * r;
-        const paint = (c) => {
-          c.scale(k, -k);
-          c.translate(-g.adv / 2, -0.31);
-          g.parts.forEach((part, pi) => {
-            this._fill(c, part.map((p, j) => this._boil(p, `L${i}p${pi}_${j}`, amp / L.k)), col(L.col), true);
-          });
-        };
-        if (a >= 0.999) {
-          ctx.save(); ctx.translate(cx, cy); paint(ctx); ctx.restore();
-          return;
-        }
-        const w = (g.adv + 0.6) * k, h = 1.7 * k;
-        const t = this._scratch(Math.ceil(w * d), Math.ceil(h * d));
-        const c = t.getContext('2d');
-        c.setTransform(1, 0, 0, 1, 0, 0);
-        c.clearRect(0, 0, t.width, t.height);
-        c.setTransform(d, 0, 0, d, 0, 0);
-        c.translate(w / 2, h / 2);
-        paint(c);
-        ctx.save();
-        ctx.globalAlpha = a;
-        ctx.drawImage(t, cx - w / 2, cy - h / 2, w, h);
-        ctx.restore();
-      });
+      const L = this._letters[i];
+      const g = LETTERS[L.ch], k = L.k * r, cx = x + (L.x - this.x) * r, cy = y + (L.y - this.y) * r;
+      const paint = (c) => {
+        c.scale(k, -k);
+        c.translate(-g.adv / 2, -0.31);
+        g.parts.forEach((part, pi) => {
+          this._fill(c, part.map((p, j) => this._boil(p, `L${i}p${pi}_${j}`, amp / L.k)), col(L.col), true);
+        });
+      };
+      if (a >= 0.999) {
+        ctx.save(); ctx.translate(cx, cy); paint(ctx); ctx.restore();
+        return;
+      }
+      const w = (g.adv + 0.6) * k, h = 1.7 * k;
+      const t = this._scratch(Math.ceil(w * d), Math.ceil(h * d));
+      const c = t.getContext('2d');
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.clearRect(0, 0, t.width, t.height);
+      c.setTransform(d, 0, 0, d, 0, 0);
+      c.translate(w / 2, h / 2);
+      paint(c);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.drawImage(t, cx - w / 2, cy - h / 2, w, h);
+      ctx.restore();
     }
 
     _scratch(w, h) {
@@ -1298,12 +1307,25 @@
         ctx.restore();
       }
       const phi = 0.03 + this._J.j * 0.75;
-      for (const side of [1, -1]) {
+      const jaw = (side) => {
         ctx.save();
         ctx.scale(1, side);
         ctx.rotate(phi);
         this._shape(ctx, SHAPES.jaw, 'jaw' + side, PAL.wagon);
         ctx.restore();
+      };
+      // A gripped letter goes between the jaws: the upper jaw is drawn first and the letter covers it,
+      // then the lower jaw is drawn on top of the letter.
+      const gi = this._gripped();
+      if (gi < 0) { jaw(1); jaw(-1); }
+      else {
+        const top = Math.cos(A.a) >= 0 ? 1 : -1;
+        jaw(top);
+        ctx.save();
+        ctx.setTransform(this._sceneM);
+        this._paintLetter(ctx, gi, ...this._sceneR);
+        ctx.restore();
+        jaw(-top);
       }
       ctx.restore();
     }
