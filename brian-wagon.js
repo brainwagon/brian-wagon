@@ -414,7 +414,8 @@
 
   // ------------------------------------------------------------ cut-paper letters
 
-  // Lowercase letters built from strokes, in em units: baseline 0, x-height 0.62,
+  // Lowercase letters built from strokes, in em units (grip = where the pincer holds it, on the
+  // stroke near the baseline): baseline 0, x-height 0.62,
   // ascender 1.0.  Each part is a list of polygons filled together (even-odd), so
   // a ring is [outer, inner].  Parts fill separately, so overlaps don't cancel.
   const LETTERS = (() => {
@@ -424,16 +425,16 @@
     const bowl = (cx) => ring(cx, 0.31, 0.31 - H);
     const stem = (x, y0, y1) => st([[x, y0], [x, y1]]);
     return {
-      b: { adv: 0.72, parts: [stem(0.09, B0, 1 - H), bowl(0.39)] },
-      r: { adv: 0.5, parts: [stem(0.09, B0, XT), st([[0.09, 0.3], ...arcPts(0.33, 0.3, 0.24, Math.PI, Math.PI / 2, 0.05), [0.44, XT]])] },
-      a: { adv: 0.72, parts: [bowl(0.3), stem(0.53, B0, XT)] },
-      i: { adv: 0.3, parts: [stem(0.09, B0, XT), [circle(0.09, 0.86, 0.115, 24)]] },
-      n: { adv: 0.68, parts: [stem(0.09, B0, XT), st([[0.09, 0.31], ...arcPts(0.31, 0.31, 0.22, Math.PI, 0, 0.05), [0.53, B0]])] },
+      b: { adv: 0.72, grip: [0.39, 0.085], parts: [stem(0.09, B0, 1 - H), bowl(0.39)] },
+      r: { adv: 0.5, grip: [0.09, 0.17], parts: [stem(0.09, B0, XT), st([[0.09, 0.3], ...arcPts(0.33, 0.3, 0.24, Math.PI, Math.PI / 2, 0.05), [0.44, XT]])] },
+      a: { adv: 0.72, grip: [0.3, 0.085], parts: [bowl(0.3), stem(0.53, B0, XT)] },
+      i: { adv: 0.3, grip: [0.09, 0.17], parts: [stem(0.09, B0, XT), [circle(0.09, 0.86, 0.115, 24)]] },
+      n: { adv: 0.68, grip: [0.09, 0.17], parts: [stem(0.09, B0, XT), st([[0.09, 0.31], ...arcPts(0.31, 0.31, 0.22, Math.PI, 0, 0.05), [0.53, B0]])] },
       // Four separate strokes: one ribbon round sharp corners overlaps itself, and even-odd
       // filling then punches holes in it.
-      w: { adv: 0.82, parts: [[[0.09, XT], [0.25, B0]], [[0.25, B0], [0.41, 0.42]], [[0.41, 0.42], [0.57, B0]], [[0.57, B0], [0.73, XT]]].map((seg) => st(seg, 0.15)) },
-      g: { adv: 0.72, parts: [bowl(0.3), st([[0.53, XT], [0.53, -0.05], ...arcPts(0.33, -0.05, 0.2, 0, -0.85 * Math.PI, 0.05)])] },
-      o: { adv: 0.72, parts: [bowl(0.36)] },
+      w: { adv: 0.82, grip: [0.25, 0.13], parts: [[[0.09, XT], [0.25, B0]], [[0.25, B0], [0.41, 0.42]], [[0.41, 0.42], [0.57, B0]], [[0.57, B0], [0.73, XT]]].map((seg) => st(seg, 0.15)) },
+      g: { adv: 0.72, grip: [0.3, 0.085], parts: [bowl(0.3), st([[0.53, XT], [0.53, -0.05], ...arcPts(0.33, -0.05, 0.2, 0, -0.85 * Math.PI, 0.05)])] },
+      o: { adv: 0.72, grip: [0.36, 0.085], parts: [bowl(0.36)] },
     };
   })();
 
@@ -530,6 +531,7 @@
       this._prop = null;                                      // held prop {name, t0}
       this._grab = null;                                      // pending pick-up {name, at, t0}
       this._props = [];                                       // props lying in the world or falling
+      this._released = null;
       this._letters = []; this._lAlpha = 1; this._lFade = null; // cut-paper letters (scene pixels)
       this._carry = null;                                     // letter being fetched / carried
       this._waveT = 0; this._waveAmt = 0; this._viewer = false;
@@ -642,8 +644,14 @@
     }
 
     putDown() {
-      if (this._carry) { this._carry = null; this._reach = null; this._jawKick = this.t; }
+      if (this._carry) { this._released = { i: this._carry.i, t: this.t }; this._carry = null; this._reach = null; this._jawKick = this.t; }
       return this;
+    }
+
+    // Offset from a letter's centre to its grip point, in scene pixels (scene y is down).
+    _gripOff(L) {
+      const g = LETTERS[L.ch];
+      return [(g.grip[0] - g.adv / 2) * L.k, -(g.grip[1] - 0.31) * L.k];
     }
 
     _startCarryMove(c) {
@@ -826,9 +834,10 @@
 
     _updateCarry(c) {
       const L = this._letters[c.i];
+      const off = this._gripOff(L);
       if (c.stage === 'fetch') {
-        this._reach = [L.x, L.y];
-        const tip = this._armTip(1), at = this._toLocal(L.x, L.y);
+        this._reach = [L.x + off[0], L.y + off[1]];
+        const tip = this._armTip(1), at = this._toLocal(this._reach[0], this._reach[1]);
         if ((Math.hypot(tip[0] - at[0], tip[1] + this._Z.z - at[1]) < 0.45 && this._J.j > 0.6) || this.t - c.t0 > 3.5) {
           c.stage = 'held';
           c.target = [L.x, L.y];
@@ -843,10 +852,10 @@
         c.target = [lerp(m.x0, m.x1, e), lerp(m.y0, m.y1, e)];
         if (k >= 1) c.move = null;
       }
-      this._reach = c.target.slice();
+      this._reach = [c.target[0] + off[0], c.target[1] + off[1]];
       const tw = this._tipWorld();
-      L.x = tw[0]; L.y = tw[1];
-      c.group.forEach((j, n) => { this._letters[j].x = tw[0] + c.off[n][0]; this._letters[j].y = tw[1] + c.off[n][1]; });
+      L.x = tw[0] - off[0]; L.y = tw[1] - off[1];   // the jaws hold the grip point, so the letter hangs above them
+      c.group.forEach((j, n) => { this._letters[j].x = L.x + c.off[n][0]; this._letters[j].y = L.y + c.off[n][1]; });
     }
 
     _updateEmotion() {
@@ -1184,15 +1193,22 @@
       ctx.clip();
     }
 
-    // Index of the letter currently gripped in the jaws (drawn between them, in _drawArm), or -1.
-    _gripped() { return this._carry && this._carry.stage === 'held' ? this._carry.i : -1; }
+    // Letters drawn between the jaws (in _drawArm) rather than behind the rig: the one being fetched or
+    // carried, and for a moment after it is put down.  Keeping the same draw order for the whole
+    // approach, grip and release avoids the claw popping from in front of the letter to behind it.
+    _gripped() {
+      const r = this._released, out = [];
+      if (r && this.t - r.t < 0.6) out.push(r.i);
+      if (this._carry && !out.includes(this._carry.i)) out.push(this._carry.i);
+      return out;
+    }
 
     // Cut-paper letters, in scene pixels, behind everything else.  (x, y, r) place
     // the rig when draw() is given overrides, so letters scale with it.  A gripped
     // letter is left out here: it is drawn between the two jaws.
     _drawLetters(ctx, x, y, r) {
       const held = this._gripped();
-      this._letters.forEach((_, i) => { if (i !== held) this._paintLetter(ctx, i, x, y, r); });
+      this._letters.forEach((_, i) => { if (!held.includes(i)) this._paintLetter(ctx, i, x, y, r); });
     }
 
     _paintLetter(ctx, i, x, y, r) {
@@ -1358,13 +1374,13 @@
       // A gripped letter goes between the jaws: the upper jaw is drawn first and the letter covers it,
       // then the lower jaw is drawn on top of the letter.
       const gi = this._gripped();
-      if (gi < 0) { jaw(1); jaw(-1); }
+      if (!gi.length) { jaw(1); jaw(-1); }
       else {
         const top = Math.cos(A.a) >= 0 ? 1 : -1;
         jaw(top);
         ctx.save();
         ctx.setTransform(this._sceneM);
-        this._paintLetter(ctx, gi, ...this._sceneR);
+        for (const i of gi) this._paintLetter(ctx, i, ...this._sceneR);
         ctx.restore();
         jaw(-top);
       }
