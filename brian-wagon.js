@@ -512,6 +512,7 @@
       this.rng = mulberry32(this.seed ^ 0x5eed);
       this.x = this.opts.x; this.y = this.opts.y; this.scale = this.opts.scale;
       this.t = 0;
+      this._bs = null; this._bsOn = {}; this._layer = 'brian'; this._fillN = 0;   // hand-drawn style (see setStyle)
 
       const f = this.opts.facing === 'left' ? -1 : 1;
       this._faceT = f; this._face = f;
@@ -595,6 +596,22 @@
     // Brian, curtains in front of him at the sides.
     setStage(o = {}) {
       this._stage = Object.assign({ w: 1920, h: 1080, floorTop: 930, floor: true, bunting: true, curtains: true }, o);
+      return this;
+    }
+
+    // Hand-drawn style.  setStyle('brush') or setStyle({ mode: 'brush', layers: { stage: true, letters: true,
+    // brian: true, props: true }, ...BrushStyle options }) draws through p5.brush (needs brush-style.js and
+    // vendor/brush.js); setStyle('flat') / setStyle(null) goes back to flat cut paper.  Layers not listed
+    // default to on, and a layer set to false stays flat paper.
+    setStyle(o = 'flat') {
+      if (typeof o === 'string') o = { mode: o };
+      if (!o || o.mode === 'flat') { this._bs = null; return this; }
+      const { mode, layers, ...rest } = o;
+      const Ctor = typeof BrushStyle !== 'undefined' ? BrushStyle : (typeof require === 'function' ? require('./brush-style.js') : null);
+      if (!Ctor) throw new Error('BrianWagon.setStyle: brush-style.js is not loaded');
+      this._bsOn = Object.assign({ stage: true, letters: true, brian: true, props: true }, layers);
+      if (!this._bs) this._bs = new Ctor(rest);
+      else this._bs.o = Object.assign(this._bs.o, rest);
       return this;
     }
 
@@ -720,6 +737,7 @@
     // Apply one cue object (see cues/*.json).  Screen-level fields (fade) are left
     // to the renderer.
     cue(c) {
+      if ('style' in c) this.setStyle(c.style);
       if (c.emotion) this.setEmotion(c.emotion, { intensity: c.intensity ?? 1, blend: c.blend ?? 0.3 });
       if ('lookAt' in c) c.lookAt === 'viewer' ? this.lookAt('viewer') : c.lookAt ? this.lookAt(c.lookAt[0], c.lookAt[1]) : this.lookAt(null);
       if (c.letters) this.setLetters(c.letters.text, c.letters);
@@ -1044,9 +1062,13 @@
       const fxs = Math.abs(fx) < 0.03 ? (fx < 0 ? -0.03 : 0.03) : fx;
 
       const staged = this._stage && o.x == null && o.y == null && o.scale == null;
+      this._fillN = 0;
+      this._layer = 'stage';
       if (staged) this._drawStageBack(ctx);
       this._sceneM = ctx.getTransform(); this._sceneR = [x, y, s / this.scale];   // for the letter held between the jaws
+      this._layer = 'letters';
       this._drawLetters(ctx, x, y, s / this.scale);
+      this._layer = 'brian';
 
       ctx.save();
       ctx.translate(x, y);
@@ -1075,10 +1097,13 @@
       this._drawOverlays(ctx, fx);
       ctx.restore();
 
+      this._layer = 'props';
       this._drawWorldProps(ctx);
       this._drawConfetti(ctx);
       ctx.restore();
+      this._layer = 'stage';
       if (staged) this._drawStageFront(ctx);
+      if (this._bs && staged) this._bs.paper(ctx);
       return this;
     }
 
@@ -1116,8 +1141,18 @@
     }
 
     // Fill one or more polygons (even-odd, so a second polygon cuts a hole).
-    _fill(ctx, polys, c, shadow = true, outline = 0) {
+    _fill(ctx, polys, c, shadow = true, outline = 0, id) {
       if (!Array.isArray(polys[0][0])) polys = [polys];
+      if (this._bs) {
+        if (this._bsOn[this._layer] !== false) {
+          this._bs.fill(ctx, polys, c, {
+            id: id == null ? ++this._fillN : sid(id), step: this._step,
+            outline: shadow && this._layer !== 'letters', grow: outline / 2, alpha: ctx.globalAlpha,
+            gain: this._layer === 'letters' ? 1.4 : 1,   // letters overlap themselves; keep them dense
+          });
+          return;
+        }
+      }
       if (this.opts.shadows && shadow && c.a === 1) {
         const M = ctx.getTransform(), inv = M.inverse();
         const k = this.opts.shadowSize * Math.hypot(M.a, M.b);
@@ -1139,7 +1174,7 @@
 
     _shape(ctx, pts, id, c, shadow = true) {
       const b = this._boil(pts, id);
-      this._fill(ctx, b, c, shadow);
+      this._fill(ctx, b, c, shadow, 0, id);
       return b;
     }
 
@@ -1161,6 +1196,12 @@
     }
 
     _paintLetter(ctx, i, x, y, r) {
+      const prev = this._layer;
+      this._layer = 'letters';   // also when painted from inside the arm (brush style keys on the layer)
+      try { this._paintLetterIn(ctx, i, x, y, r); } finally { this._layer = prev; }
+    }
+
+    _paintLetterIn(ctx, i, x, y, r) {
       const a = clamp(this._lAlpha, 0, 1);
       if (a <= 0.001) return;
       const amp = (this.opts.boil * this.scale * 0.6);
@@ -1174,7 +1215,7 @@
         c.scale(k, -k);
         c.translate(-g.adv / 2, -0.31);
         g.parts.forEach((part, pi) => {
-          this._fill(c, part.map((p, j) => this._boil(p, `L${i}p${pi}_${j}`, amp / L.k)), col(L.col), true);
+          this._fill(c, part.map((p, j) => this._boil(p, `L${i}p${pi}_${j}`, amp / L.k)), col(L.col), true, 0, `L${i}p${pi}`);
         });
       };
       if (a >= 0.999) {
@@ -1205,7 +1246,7 @@
     // ---- stage set.  Drawn in y-down scene pixels, in units of SU pixels so the boil
     // has the same feel as everywhere else.
     _stageShape(ctx, pts, id, hex) {
-      this._fill(ctx, this._boil(pts, id, this.opts.boil * 0.8), col(hex), false);
+      this._fill(ctx, this._boil(pts, id, this.opts.boil * 0.8), col(hex), false, 0, id);
     }
 
     _drawStageBack(ctx) {
@@ -1495,8 +1536,8 @@
       // The backing is the glyph itself, stroked with a round join, so the
       // border has an even width all round and shares the glyph's boil.
       const polys = build(0).map((p, j) => this._boil(p, id + j, amp));
-      if (this.opts.stickers) this._fill(ctx, polys, PAL.white, true, 0.12 / Math.max(sc, 0.2));
-      this._fill(ctx, polys, c, !this.opts.stickers);
+      if (this.opts.stickers) this._fill(ctx, polys, PAL.white, true, 0.12 / Math.max(sc, 0.2), id + 'S');
+      this._fill(ctx, polys, c, !this.opts.stickers, 0, id);
     }
 
     _drawOverlays(ctx, fx) {

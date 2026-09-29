@@ -9,6 +9,8 @@
 </head>
 <body>
 <canvas id="c"></canvas>
+<script src="vendor/brush.js"></script>
+<script src="brush-style.js"></script>
 <script src="brian-wagon.js"></script>
 <script>
   let spec, rig, canvas, ctx, cues, next, fade = { a: 0, from: 0, to: 0, t0: 0, dur: 1 };
@@ -31,16 +33,19 @@
       ...(spec.options || {}),
     });
     if (spec.stage) rig.setStage(spec.stage);
+    if (spec.style) rig.setStyle(spec.style);   // 'brush' | 'flat' | { mode, layers, ...brush options }
     cues = (spec.cues || []).map((c, i) => ({ ...c, i })).sort((a, b) => a.t - b.t || a.i - b.i);
     next = 0;
     return Math.round((spec.duration ?? 5) * (spec.fps ?? 30));
   };
 
   // Frames must be requested in order, starting at 0.
-  window.renderFrame = (i) => {
+  // draw = false only advances the simulation (used to reach a still without painting every frame).
+  window.renderFrame = (i, draw = true) => {
     const fps = spec.fps ?? 30;
     if (i > 0) rig.update(1 / fps);
     while (next < cues.length && cues[next].t <= i / fps + 1e-9) applyCue(cues[next++]);
+    if (!draw) return null;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (spec.background) { ctx.fillStyle = spec.background; ctx.fillRect(0, 0, canvas.width, canvas.height); }

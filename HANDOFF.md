@@ -62,6 +62,30 @@ he uses to gesture, reach and carry props.
   `moveTo: {x, seconds, ease}`, `setX`, `face`, `trigger`, `reach: [x,y] | null`,
   `jaw: 0..1 | null`, `grab: "ball" | {prop, at: [x,y]}`, `release: true`.
 
+## Hand-drawn "brush" style (branch `brush`, work in progress)
+An optional look that draws the rig through p5.brush (standalone build, no p5 needed) instead of flat cut paper.
+It needs tuning by eye; the first full render is `out/intro-brush/intro-brush.mp4`.
+- **Switches:** `node export.mjs cues/intro.json --style brush --preview` (flat is the default); `"style"` in a
+  cue file, either top-level or as a timed cue; the "Hand-drawn (p5.brush)" checkbox in `index.html`;
+  `rig.setStyle('brush' | 'flat' | { mode, layers: {stage, letters, brian, props}, fill: {...}, ink: {...}, paper: {...} })`.
+  Output goes to `out/<name>-brush/`.
+- **Files:** `brush-style.js` (the backend, options in `DEFAULTS`), `vendor/brush.js` (p5.brush 2.2.3 standalone,
+  MIT, licence alongside). The rig sends every fill through `_fill`, which hands polygons to the backend.
+- **How it works:** p5.brush assumes white paper and writes opaque pixels with the white mixed in, so each fill
+  and outline is painted in black as a density map and that density becomes the alpha of the real colour, then
+  is composited on the 2D context. This is why clips, alpha and the letter scratch canvases work unchanged.
+  Holes are joined to their outer ring by a zero-width bridge for the fill; outlines are drawn per ring.
+  Stroke randomness is re-seeded per shape and per boil step, so it boils at 15 fps like the geometry.
+- **Rendering:** WebGL2 on the GPU via ANGLE and Mesa D3D12 (`MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA`); about 3 s a
+  frame, so roughly an hour for the intro. `--gl software` works but is far slower. Each shape needs a GPU
+  readback. Chromium `chromium_headless_shell-1234` force-loses the GL context after ~130 readbacks in a frame,
+  so the exporter prefers revision 1208 for brush renders (`--browser` overrides).
+- **Speed tips:** stills mode (`--stills 6.5,13,25`) only draws the requested frames, about 10 s for three.
+- **Known issues / tuning ideas:** faint haze above the bunting cord (brush texture scales with bounding box, not
+  thickness); ink outlines are subtle on the dark stage; jar glass reads grey and dulls the brain; letters have
+  no outline because their overlapping parts left seams; the boil on moving frames hasn't been judged; the preview
+  runs at about 1 fps in headless Chromium; the preview has no per-layer switches.
+
 ## Making the intro animation
 ```
 node tools/make-intro.mjs                                   # writes cues/intro.json
