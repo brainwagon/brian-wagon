@@ -4,6 +4,8 @@
 //   node export.mjs cues/demo.json                 -> out/demo/frame_00000.png ...
 //   node export.mjs cues/demo.json --still 3.5     -> out/demo/still_3.50.png
 //   node export.mjs cues/demo.json --preview       -> also out/demo/preview.mp4 (on grey)
+//   node export.mjs cues/intro.json --stills 1,6.5  -> several stills in one pass
+//   (a cue file with "background" is opaque: --preview then writes <name>.mp4 with its "audio" track)
 //   node export.mjs cues/demo.json --out some/dir
 import { chromium } from 'playwright-core';
 import fs from 'node:fs';
@@ -15,7 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const flag = (name) => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };
-const cueFile = args.find((a, i) => !a.startsWith('--') && !['--still', '--out', '--bg'].includes(args[i - 1]));
+const cueFile = args.find((a, i) => !a.startsWith('--') && !['--still', '--stills', '--out', '--bg'].includes(args[i - 1]));
 if (!cueFile) {
   console.error('usage: node export.mjs <cues.json> [--out dir] [--still seconds] [--preview] [--bg #808890]');
   process.exit(1);
@@ -25,6 +27,7 @@ const spec = JSON.parse(fs.readFileSync(cueFile, 'utf8'));
 const fps = spec.fps ?? 30;
 const outDir = flag('--out') ?? path.join(here, 'out', path.basename(cueFile, '.json'));
 const still = flag('--still');
+const stills = flag('--stills');
 fs.mkdirSync(outDir, { recursive: true });
 
 // Use Playwright's own browser if it matches this version; otherwise fall back
@@ -53,7 +56,14 @@ const total = await page.evaluate((s) => window.setup(s), spec);
 
 const save = (file, dataUrl) => fs.writeFileSync(file, Buffer.from(dataUrl.split(',')[1], 'base64'));
 
-if (still != null) {
+if (stills != null) {
+  const want = new Map(stills.split(',').map((t) => [Math.round(Number(t) * fps), Number(t)]));
+  const last = Math.max(...want.keys());
+  for (let i = 0; i <= last; i++) {
+    const url = await page.evaluate((n) => window.renderFrame(n), i);
+    if (want.has(i)) { const f = path.join(outDir, `still_${want.get(i).toFixed(2)}.png`); save(f, url); console.log(f); }
+  }
+} else if (still != null) {
   const target = Math.round(Number(still) * fps);
   let url;
   for (let i = 0; i <= target; i++) url = await page.evaluate((n) => window.renderFrame(n), i);
@@ -67,14 +77,26 @@ if (still != null) {
   }
   console.log(`\r${total} frames -> ${outDir}`);
   if (args.includes('--preview')) {
-    const bg = (flag('--bg') ?? '#808890').replace('#', '0x');
-    const mp4 = path.join(outDir, 'preview.mp4');
-    execFileSync('ffmpeg', [
-      '-y', '-loglevel', 'error', '-framerate', String(fps), '-i', path.join(outDir, 'frame_%05d.png'),
-      '-f', 'lavfi', '-i', `color=c=${bg}:s=${spec.width}x${spec.height}:r=${fps}`,
-      '-filter_complex', '[1][0]overlay=shortest=1,format=yuv420p', '-c:v', 'libx264', '-crf', '18', mp4,
-    ], { stdio: 'inherit' });
-    console.log(mp4);
+    const frames = ['-framerate', String(fps), '-i', path.join(outDir, 'frame_%05d.png')];
+    if (spec.background) {
+      // Opaque frames: no grey to composite on; add the audio track if there is one.
+      const mp4 = path.join(outDir, path.basename(cueFile, '.json') + '.mp4');
+      const audio = spec.audio && fs.existsSync(path.join(here, spec.audio)) ? path.join(here, spec.audio) : null;
+      execFileSync('ffmpeg', [
+        '-y', '-loglevel', 'error', ...frames, ...(audio ? ['-i', audio] : []),
+        '-vf', 'format=yuv420p', '-c:v', 'libx264', '-crf', '16', ...(audio ? ['-c:a', 'aac', '-b:a', '192k', '-shortest'] : []), mp4,
+      ], { stdio: 'inherit' });
+      console.log(mp4);
+    } else {
+      const bg = (flag('--bg') ?? '#808890').replace('#', '0x');
+      const mp4 = path.join(outDir, 'preview.mp4');
+      execFileSync('ffmpeg', [
+        '-y', '-loglevel', 'error', ...frames,
+        '-f', 'lavfi', '-i', `color=c=${bg}:s=${spec.width}x${spec.height}:r=${fps}`,
+        '-filter_complex', '[1][0]overlay=shortest=1,format=yuv420p', '-c:v', 'libx264', '-crf', '18', mp4,
+      ], { stdio: 'inherit' });
+      console.log(mp4);
+    }
   }
 }
 await browser.close();

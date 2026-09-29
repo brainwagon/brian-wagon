@@ -92,6 +92,8 @@
     red: col('#D93B30'), pink: col('#EF6F9C'), blush: col('#EF6F9C', 0.7),
     teal: col('#2BB3A3'), orange: col('#F28C28'), bulb: col('#FFE680'),
   };
+  const SU = 40;   // stage unit, px
+  const LETTER_COLORS = ['#2BB3A3', '#EF6F9C', '#F2C230', '#F28C28', '#5B8DEF'];
   const CONFETTI = ['#F2C230', '#2BB3A3', '#EF6F9C', '#F28C28', '#5B8DEF', '#FFFFFF'].map((h) => col(h).css);
 
   // ------------------------------------------------------------------ geometry
@@ -99,7 +101,7 @@
   const G = {
     wheelR: 1.2, wheelX: 2.7,
     bed: [[-3.3, 2.0], [3.3, 2.0], [3.5, 4.2], [-3.5, 4.2]],
-    pivot: [3.4, 3.2], armRest: 2.0, armMaxExt: 3.2, jawLen: 1.0,
+    pivot: [3.4, 3.2], armRest: 2.0, armMaxExt: 6.5, jawLen: 1.0,
     armRestAng: 25 * DEG, armMoveAng: 45 * DEG, armLo: -40 * DEG, armHi: 115 * DEG,
     jarW: 2.95, glassT: 0.18, jarPivotY: 4.0, jarY0: 3.9, shoulder: 6.4, domeRy: 2.76, water: 8.2,
     brainScale: 1.5, brain: [0, 6.05],
@@ -410,6 +412,31 @@
     },
   };
 
+  // ------------------------------------------------------------ cut-paper letters
+
+  // Lowercase letters built from strokes, in em units: baseline 0, x-height 0.62,
+  // ascender 1.0.  Each part is a list of polygons filled together (even-odd), so
+  // a ring is [outer, inner].  Parts fill separately, so overlaps don't cancel.
+  const LETTERS = (() => {
+    const SW = 0.17, H = SW / 2, XT = 0.62 - H, B0 = H;
+    const st = (pts, w = SW) => [ribbon(densify(pts, 0.05, false), w)];
+    const ring = (cx, cy, r) => [circle(cx, cy, r + H, 44), circle(cx, cy, r - H, 36)];
+    const bowl = (cx) => ring(cx, 0.31, 0.31 - H);
+    const stem = (x, y0, y1) => st([[x, y0], [x, y1]]);
+    return {
+      b: { adv: 0.72, parts: [stem(0.09, B0, 1 - H), bowl(0.39)] },
+      r: { adv: 0.5, parts: [stem(0.09, B0, XT), st([[0.09, 0.3], ...arcPts(0.33, 0.3, 0.24, Math.PI, Math.PI / 2, 0.05), [0.44, XT]])] },
+      a: { adv: 0.72, parts: [bowl(0.3), stem(0.53, B0, XT)] },
+      i: { adv: 0.3, parts: [stem(0.09, B0, XT), [circle(0.09, 0.86, 0.115, 24)]] },
+      n: { adv: 0.68, parts: [stem(0.09, B0, XT), st([[0.09, 0.31], ...arcPts(0.31, 0.31, 0.22, Math.PI, 0, 0.05), [0.53, B0]])] },
+      // Four separate strokes: one ribbon round sharp corners overlaps itself, and even-odd
+      // filling then punches holes in it.
+      w: { adv: 0.82, parts: [[[0.09, XT], [0.25, B0]], [[0.25, B0], [0.41, 0.42]], [[0.41, 0.42], [0.57, B0]], [[0.57, B0], [0.73, XT]]].map((seg) => st(seg, 0.15)) },
+      g: { adv: 0.72, parts: [bowl(0.3), st([[0.53, XT], [0.53, -0.05], ...arcPts(0.33, -0.05, 0.2, 0, -0.85 * Math.PI, 0.05)])] },
+      o: { adv: 0.72, parts: [bowl(0.36)] },
+    };
+  })();
+
   // ---------------------------------------------------------------- props
 
   // Props are drawn upright around a grip point at the origin, about one unit
@@ -502,6 +529,9 @@
       this._prop = null;                                      // held prop {name, t0}
       this._grab = null;                                      // pending pick-up {name, at, t0}
       this._props = [];                                       // props lying in the world or falling
+      this._letters = []; this._lAlpha = 1; this._lFade = null; // cut-paper letters (scene pixels)
+      this._carry = null;                                     // letter being fetched / carried
+      this._waveT = 0; this._waveAmt = 0; this._viewer = false;
       this._bobPh = 0; this._swayPh = 0; this._bouncePh = 0;
       this._pupil = [[0, 0, 0, 0], [0, 0, 0, 0]];             // x, y, vx, vy (normalised)
       this._pupilT = [[0, 0], [0, 0]];
@@ -534,7 +564,83 @@
       return this;
     }
 
-    lookAt(x, y) { this._look = x == null ? null : [x, y]; return this; }
+    // lookAt(x, y) in scene pixels; lookAt(null) = idle drift; lookAt('viewer') = straight ahead.
+    lookAt(x, y) {
+      this._viewer = x === 'viewer';
+      this._look = x == null || this._viewer ? null : [x, y];
+      return this;
+    }
+
+    wave(on = true) { this._waveT = on ? 1 : 0; return this; }
+
+    // ----- cut-paper letters.  Scene pixels; (x, y) is the centre of the row of
+    // letters' x-height band, and size is the em (ascender height) in pixels.
+    setLetters(text, { x = 0, y = 0, size = 150, tracking = 0.08, space = 0.45, alpha = 1, colors = LETTER_COLORS } = {}) {
+      let w = 0, n = 0;
+      const items = [];
+      for (const ch of text) {
+        if (ch === ' ') { w += space; continue; }
+        const g = LETTERS[ch];
+        if (!g) throw new Error(`BrianWagon: no cut-paper letter "${ch}"`);
+        items.push({ ch, adv: g.adv, off: w, col: colors[n % colors.length] });
+        w += g.adv + tracking; n++;
+      }
+      w -= tracking;
+      this._letters = items.map((it) => ({ ch: it.ch, adv: it.adv, k: size, col: it.col, x: x + (it.off + it.adv / 2 - w / 2) * size, y }));
+      this._lAlpha = alpha; this._lFade = null;
+      return this;
+    }
+
+    // A backdrop in scene pixels (1920x1080 by default): floorboards and bunting behind
+    // Brian, curtains in front of him at the sides.
+    setStage(o = {}) {
+      this._stage = Object.assign({ w: 1920, h: 1080, floorTop: 930, floor: true, bunting: true, curtains: true }, o);
+      return this;
+    }
+
+    letterPos(i) { const L = this._letters[i]; return [L.x, L.y]; }
+
+    fadeLetters(to, seconds = 1) {
+      this._lFade = { from: this._lAlpha, to, t0: this.t, dur: Math.max(seconds, 1e-3) };
+      return this;
+    }
+
+    // Reach for letter i, close the jaws on it and carry it.  `group` lists other
+    // letters that travel with it (dragging a whole word by its first letter).
+    carry(i, { group = [] } = {}) {
+      if (!this._letters[i]) throw new Error(`BrianWagon: no letter ${i}`);
+      this._grab = null;
+      if (this._prop) this.release();
+      this._carry = { i, group, stage: 'fetch', t0: this.t, target: null, move: null, req: null, off: [] };
+      return this;
+    }
+
+    // Move the carried letter (the arm follows).  Starts once the letter is gripped.
+    carryTo(x, y, seconds = 1, ease = 'inOut') {
+      const c = this._carry;
+      if (!c) throw new Error('BrianWagon: carryTo without carry');
+      c.req = { x1: x, y1: y, dur: Math.max(seconds, 1e-3), ease: EASE[ease] || EASE.inOut };
+      if (c.stage === 'held') this._startCarryMove(c);
+      return this;
+    }
+
+    putDown() {
+      if (this._carry) { this._carry = null; this._reach = null; this._jawKick = this.t; }
+      return this;
+    }
+
+    _startCarryMove(c) {
+      const r = c.req;
+      if (!r) return;
+      c.move = { x0: c.target[0], y0: c.target[1], x1: r.x1, y1: r.y1, t0: this.t, dur: r.dur, ease: r.ease };
+      c.req = null;
+    }
+
+    // Where the jaws hold things, in scene pixels.
+    _tipWorld() {
+      const tip = this._armTip(1), fs = this._face < 0 ? -1 : 1;
+      return [this.x + tip[0] * fs * this.scale, this.y - (tip[1] + this._lift() + this._Z.z) * this.scale];
+    }
 
     face(dir) { this._faceT = dir === 'left' || dir < 0 ? -1 : 1; return this; }
 
@@ -611,6 +717,28 @@
       return [G.pivot[0] + Math.cos(a) * L, G.pivot[1] + Math.sin(a) * L];
     }
 
+    // Apply one cue object (see cues/*.json).  Screen-level fields (fade) are left
+    // to the renderer.
+    cue(c) {
+      if (c.emotion) this.setEmotion(c.emotion, { intensity: c.intensity ?? 1, blend: c.blend ?? 0.3 });
+      if ('lookAt' in c) c.lookAt === 'viewer' ? this.lookAt('viewer') : c.lookAt ? this.lookAt(c.lookAt[0], c.lookAt[1]) : this.lookAt(null);
+      if (c.letters) this.setLetters(c.letters.text, c.letters);
+      if (c.fadeLetters) this.fadeLetters(c.fadeLetters[0], c.fadeLetters[1]);
+      if (c.face) this.face(c.face);
+      if (c.setX != null) this.setX(c.setX);
+      if (c.moveTo) this.moveTo(c.moveTo.x, c.moveTo.seconds ?? 1.5, { ease: c.moveTo.ease ?? 'inOut' });
+      if ('reach' in c) c.reach ? this.reach(c.reach[0], c.reach[1]) : this.reach(null);
+      if ('jaw' in c) this.jaw(c.jaw);
+      if ('carry' in c) this.carry(typeof c.carry === 'number' ? c.carry : c.carry.i, typeof c.carry === 'number' ? {} : c.carry);
+      if (c.carryTo) this.carryTo(c.carryTo[0], c.carryTo[1], c.carryTo[2], c.carryTo[3]);
+      if (c.putDown) this.putDown();
+      if (c.grab) this.grab(typeof c.grab === 'string' ? c.grab : c.grab.prop, typeof c.grab === 'string' ? {} : { at: c.grab.at });
+      if (c.release) this.release();
+      if ('wave' in c) this.wave(c.wave);
+      for (const t of [].concat(c.trigger || [])) this.trigger(t);
+      return this;
+    }
+
     get moving() { return Math.abs(this._v) > 0.05; }
     get facing() { return this._faceT < 0 ? 'left' : 'right'; }
 
@@ -623,7 +751,7 @@
       this._updateEmotion();
       this._updateMove(dt);
       this._updateEyes(dt);
-      this._updateArm();
+      this._updateArm(dt);
       const n = Math.ceil(dt * 240), h = dt / n;
       for (let i = 0; i < n; i++) this._physics(h);
       this._updateParticles(dt);
@@ -631,8 +759,15 @@
     }
 
     // Work out what the arm, its extension and the jaws are aiming for.
-    _updateArm() {
-      const P = this.p, t = this.t, g = this._grab;
+    _updateArm(dt) {
+      const P = this.p, t = this.t, g = this._grab, c = this._carry;
+      if (this._lFade) {
+        const f = this._lFade, k = clamp((t - f.t0) / f.dur, 0, 1);
+        this._lAlpha = lerp(f.from, f.to, smooth(k));
+        if (k >= 1) this._lFade = null;
+      }
+      this._waveAmt += (this._waveT - this._waveAmt) * Math.min(1, dt * 6);
+      if (c) this._updateCarry(c);
       let a = (this.moving ? G.armMoveAng : G.armRestAng) + P.armLift;
       let e = P.armExt;
       const reach = this._reach ? this._toLocal(this._reach[0], this._reach[1]) : null;
@@ -641,11 +776,18 @@
         a = Math.atan2(dy, dx);
         e = Math.hypot(dx, dy) - G.jawLen * 0.85 - G.armRest;
       }
+      const w = this._waveAmt;
+      if (w > 0.01) {
+        a = lerp(a, 65 * DEG, w) + w * 0.45 * Math.sin(TAU * 1.8 * t);
+        e += w * 0.6;
+      }
       this._armT = { a: clamp(a, G.armLo, G.armHi), e: clamp(e, -0.4, G.armMaxExt) };
 
       let jaw = P.jaw + P.jawFlap * Math.tanh(3 * Math.sin(TAU * P.jawRate * t));
+      if (w > 0.01) jaw = lerp(jaw, 0.55 + 0.3 * Math.sin(TAU * 1.8 * t + 1), w);
       if (this._prop) jaw = PROPS[this._prop.name].grip;
       else if (g) jaw = 0.9;
+      else if (c) jaw = c.stage === 'fetch' ? 0.9 : 0.3;
       if (this._jawOverride != null) jaw = this._jawOverride;
       if (this._jawKick != null) {
         if (t - this._jawKick < 0.35) jaw = Math.max(jaw, 0.9);
@@ -662,6 +804,31 @@
           this._reach = null;
         }
       }
+    }
+
+    _updateCarry(c) {
+      const L = this._letters[c.i];
+      if (c.stage === 'fetch') {
+        this._reach = [L.x, L.y];
+        const tip = this._armTip(1), at = this._toLocal(L.x, L.y);
+        if ((Math.hypot(tip[0] - at[0], tip[1] + this._Z.z - at[1]) < 0.45 && this._J.j > 0.6) || this.t - c.t0 > 3.5) {
+          c.stage = 'held';
+          c.target = [L.x, L.y];
+          c.off = c.group.map((j) => [this._letters[j].x - L.x, this._letters[j].y - L.y]);
+          this._startCarryMove(c);
+        }
+        return;
+      }
+      const m = c.move;
+      if (m) {
+        const k = clamp((this.t - m.t0) / m.dur, 0, 1), e = m.ease(k);
+        c.target = [lerp(m.x0, m.x1, e), lerp(m.y0, m.y1, e)];
+        if (k >= 1) c.move = null;
+      }
+      this._reach = c.target.slice();
+      const tw = this._tipWorld();
+      L.x = tw[0]; L.y = tw[1];
+      c.group.forEach((j, n) => { this._letters[j].x = tw[0] + c.off[n][0]; this._letters[j].y = tw[1] + c.off[n][1]; });
     }
 
     _updateEmotion() {
@@ -721,7 +888,7 @@
           const vx = look[0] - ex, vy = look[1] - ey, m = Math.hypot(vx, vy) || 1;
           const k = Math.min(1, m / 3.5) / m;
           g = [vx * k, vy * k];
-        } else g = idle.slice();
+        } else g = this._viewer ? [0, 0] : idle.slice();
         g[0] = g[0] * P.gazeFollow + P.gazeX + P.diverge * div[i][0] + this._dart[i][0] * P.dartAmp;
         g[1] = g[1] * P.gazeFollow + P.gazeY + P.diverge * div[i][1] + this._dart[i][1] * P.dartAmp;
         if (P.tremble > 0) {
@@ -876,6 +1043,10 @@
       const fx = Math.sin((this._face * Math.PI) / 2);
       const fxs = Math.abs(fx) < 0.03 ? (fx < 0 ? -0.03 : 0.03) : fx;
 
+      const staged = this._stage && o.x == null && o.y == null && o.scale == null;
+      if (staged) this._drawStageBack(ctx);
+      this._drawLetters(ctx, x, y, s / this.scale);
+
       ctx.save();
       ctx.translate(x, y);
       ctx.scale(s, -s);
@@ -906,6 +1077,7 @@
       this._drawWorldProps(ctx);
       this._drawConfetti(ctx);
       ctx.restore();
+      if (staged) this._drawStageFront(ctx);
       return this;
     }
 
@@ -974,6 +1146,120 @@
       ctx.beginPath();
       this._path(ctx, pts);
       ctx.clip();
+    }
+
+    // Cut-paper letters, in scene pixels, behind everything else.  (x, y, r) place
+    // the rig when draw() is given overrides, so letters scale with it.
+    _drawLetters(ctx, x, y, r) {
+      const a = clamp(this._lAlpha, 0, 1);
+      if (!this._letters.length || a <= 0.001) return;
+      const amp = (this.opts.boil * this.scale * 0.6);
+      // One letter's strokes overlap each other, so fading them one by one would
+      // double the opacity where they cross.  Below full opacity each letter is
+      // drawn once at full strength on a scratch canvas and faded as a whole.
+      const M = ctx.getTransform(), d = Math.hypot(M.a, M.b) || 1;
+      this._letters.forEach((L, i) => {
+        const g = LETTERS[L.ch], k = L.k * r, cx = x + (L.x - this.x) * r, cy = y + (L.y - this.y) * r;
+        const paint = (c) => {
+          c.scale(k, -k);
+          c.translate(-g.adv / 2, -0.31);
+          g.parts.forEach((part, pi) => {
+            this._fill(c, part.map((p, j) => this._boil(p, `L${i}p${pi}_${j}`, amp / L.k)), col(L.col), true);
+          });
+        };
+        if (a >= 0.999) {
+          ctx.save(); ctx.translate(cx, cy); paint(ctx); ctx.restore();
+          return;
+        }
+        const w = (g.adv + 0.6) * k, h = 1.7 * k;
+        const t = this._scratch(Math.ceil(w * d), Math.ceil(h * d));
+        const c = t.getContext('2d');
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.clearRect(0, 0, t.width, t.height);
+        c.setTransform(d, 0, 0, d, 0, 0);
+        c.translate(w / 2, h / 2);
+        paint(c);
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.drawImage(t, cx - w / 2, cy - h / 2, w, h);
+        ctx.restore();
+      });
+    }
+
+    _scratch(w, h) {
+      if (!this._scr) this._scr = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : document.createElement('canvas');
+      if (this._scr.width !== w) this._scr.width = w;
+      if (this._scr.height !== h) this._scr.height = h;
+      return this._scr;
+    }
+
+    // ---- stage set.  Drawn in y-down scene pixels, in units of SU pixels so the boil
+    // has the same feel as everywhere else.
+    _stageShape(ctx, pts, id, hex) {
+      this._fill(ctx, this._boil(pts, id, this.opts.boil * 0.8), col(hex), false);
+    }
+
+    _drawStageBack(ctx) {
+      const S = this._stage, W = S.w / SU, Ht = S.h / SU, t = this.t, sd = this.seed;
+      ctx.save();
+      ctx.scale(SU, SU);
+      if (S.floor) {
+        const ys = [0, 20, 48, 85, 132, 190].map((v) => (S.floorTop + v) / SU);
+        const len = [6.5, 7.5, 9, 10.5, 12];
+        const tones = ['#2f2740', '#352c47', '#2a2338', '#3a3050'];
+        this._stageShape(ctx, densify([[-1, ys[0]], [W + 1, ys[0]], [W + 1, Ht + 2], [-1, Ht + 2]], 0.3), 'floor', '#15121e');
+        for (let r = 0; r < 5; r++) {
+          let x = -hash01(sd, r, 1) * len[r];
+          for (let i = 0; x < W + 1; i++) {
+            const l = len[r] * (0.7 + 0.6 * hash01(sd, r, i + 10)), g = 0.09;
+            this._stageShape(ctx, densify([[x + g, ys[r] + g], [x + l - g, ys[r] + g], [x + l - g, ys[r + 1] - g], [x + g, ys[r + 1] - g]], 0.25),
+              `fb${r}_${i}`, tones[Math.floor(hash01(sd, r, i + 50) * tones.length)]);
+            x += l;
+          }
+        }
+        this._stageShape(ctx, densify([[-1, ys[0] - 0.05], [W + 1, ys[0] - 0.05], [W + 1, ys[0] + 0.1], [-1, ys[0] + 0.1]], 0.3), 'floorEdge', '#5a4d72');
+      }
+      if (S.bunting) {
+        const x0 = 4.6, x1 = W - 4.6, y0 = 1.6, sag = 3.2, N = 15;
+        const at = (u) => { const x = lerp(x0, x1, u), q = 2 * u - 1; return [x, y0 + sag * (1 - q * q)]; };
+        const rope = [];
+        for (let i = 0; i <= 60; i++) rope.push(at(i / 60));
+        this._stageShape(ctx, ribbon(rope, 0.1), 'rope', '#c9b98e');
+        const cols = [...LETTER_COLORS, '#F4EEDD'];
+        for (let i = 0; i < N; i++) {
+          const u = 0.04 + (0.92 * i) / (N - 1), p = at(u), q = at(u + 0.01), p0 = at(u - 0.01);
+          const ang = Math.atan2(q[1] - p0[1], q[0] - p0[0]) * 0.8 + 0.07 * Math.sin(t * 1.1 + i * 0.9);
+          const c = Math.cos(ang), sn = Math.sin(ang);
+          const tri = densify([[-0.9, 0], [0.9, 0], [0, 2.2]], 0.15).map(([x, y]) => [p[0] + x * c - y * sn, p[1] + x * sn + y * c]);
+          this._stageShape(ctx, tri, 'flag' + i, cols[i % cols.length]);
+        }
+      }
+      ctx.restore();
+    }
+
+    _drawStageFront(ctx) {
+      const S = this._stage;
+      if (!S.curtains) return;
+      const W = S.w / SU, Ht = S.h / SU;
+      ctx.save();
+      ctx.scale(SU, SU);
+      const e = (y) => 3.6 + 1.4 * Math.pow((y - 15) / 15, 2) + 0.15 * Math.sin(y * 2.2);   // inner edge, pinched at the tie
+      const tones = ['#8f1d2f', '#b3283c', '#7a1828', '#a12336', '#8f1d2f', '#c13045'];
+      const K = 6;
+      const b = (k, y) => (k === 0 ? -1 : k === K ? e(y) : (e(y) * k) / K + 0.14 * Math.sin(y * 1.7 + k * 1.3));
+      for (const side of [-1, 1]) {
+        const X = (x) => (side < 0 ? x : W - x), tag = side < 0 ? 'L' : 'R';
+        for (let k = 0; k < K; k++) {
+          const pts = [];
+          for (let y = -0.5; y <= Ht + 0.5; y += 0.4) pts.push([X(b(k, y)), y]);
+          for (let y = Ht + 0.5; y >= -0.5; y -= 0.4) pts.push([X(b(k + 1, y)), y]);
+          this._stageShape(ctx, pts, `cur${tag}${k}`, tones[k]);
+        }
+        const ex = e(15);
+        this._stageShape(ctx, ribbon([[X(ex - 2.6), 14.5], [X(ex + 0.3), 15.4]], 0.4), `tie${tag}`, '#e0b040');
+        this._stageShape(ctx, teardrop(X(ex + 0.1), 16.5, 0.7).map(([x, y]) => [x, y]), `tassel${tag}`, '#e0b040');
+      }
+      ctx.restore();
     }
 
     // Layers of a prop, boiled and filled.  Drawn upright around the origin.

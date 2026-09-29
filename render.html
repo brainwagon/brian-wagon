@@ -11,19 +11,11 @@
 <canvas id="c"></canvas>
 <script src="brian-wagon.js"></script>
 <script>
-  let spec, rig, canvas, ctx, cues, next;
+  let spec, rig, canvas, ctx, cues, next, fade = { a: 0, from: 0, to: 0, t0: 0, dur: 1 };
 
   function applyCue(c) {
-    if (c.emotion) rig.setEmotion(c.emotion, { intensity: c.intensity ?? 1, blend: c.blend ?? 0.3 });
-    if ('lookAt' in c) c.lookAt ? rig.lookAt(c.lookAt[0], c.lookAt[1]) : rig.lookAt(null);
-    if (c.face) rig.face(c.face);
-    if (c.setX != null) rig.setX(c.setX);
-    if (c.moveTo) rig.moveTo(c.moveTo.x, c.moveTo.seconds ?? 1.5, { ease: c.moveTo.ease ?? 'inOut' });
-    if ('reach' in c) c.reach ? rig.reach(c.reach[0], c.reach[1]) : rig.reach(null);
-    if ('jaw' in c) rig.jaw(c.jaw);
-    if (c.grab) rig.grab(typeof c.grab === 'string' ? c.grab : c.grab.prop, typeof c.grab === 'string' ? {} : { at: c.grab.at });
-    if (c.release) rig.release();
-    for (const t of [].concat(c.trigger || [])) rig.trigger(t);
+    rig.cue(c);
+    if (c.fade) fade = { from: fade.a, to: c.fade[0], t0: c.t, dur: Math.max(c.fade[1], 1e-3), a: fade.a };
   }
 
   window.setup = (s) => {
@@ -38,6 +30,7 @@
       facing: r.facing ?? 'right', emotion: r.emotion ?? 'neutral',
       ...(spec.options || {}),
     });
+    if (spec.stage) rig.setStage(spec.stage);
     cues = (spec.cues || []).map((c, i) => ({ ...c, i })).sort((a, b) => a.t - b.t || a.i - b.i);
     next = 0;
     return Math.round((spec.duration ?? 5) * (spec.fps ?? 30));
@@ -50,7 +43,11 @@
     while (next < cues.length && cues[next].t <= i / fps + 1e-9) applyCue(cues[next++]);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (spec.background) { ctx.fillStyle = spec.background; ctx.fillRect(0, 0, canvas.width, canvas.height); }
     rig.draw(ctx);
+    const k = Math.min(1, Math.max(0, (i / fps - fade.t0) / fade.dur));
+    fade.a = fade.from + (fade.to - fade.from) * k * k * (3 - 2 * k);
+    if (fade.a > 0.001) { ctx.fillStyle = `rgba(0,0,0,${fade.a})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
     return canvas.toDataURL('image/png');
   };
 </script>

@@ -59,7 +59,7 @@ The background is **transparent**. Nothing in the rig paints the canvas.
 | Wheels | Radius 1.2, centres at x = ±2.7, y = 1.2. Five spokes, so rotation is readable. They sit at the ends of the wagon and stick out slightly past the bed |
 | Suspension | Not drawn. The bounce is felt in the body's motion only. See Secondary motion |
 | Wagon bed | Chunky tray from x = −3.3 to 3.3 at the bottom (y = 2.0) and ±3.5 at the top (y = 4.2). About twice as thick as revision 1. A darker lip runs along the top edge |
-| Arm | Pivots at the leading bed edge (3.4, 3.2). A sleeve 0.6 wide, with an inner rod 0.4 wide that telescopes out. Rest length to the wrist is 2.0, extendable by about 3.2. See Arm and pincer |
+| Arm | Pivots at the leading bed edge (3.4, 3.2). A sleeve 0.6 wide, with an inner rod 0.4 wide that telescopes out. Rest length to the wrist is 2.0, extendable by up to 6.5 (enough to reach text held well above his head). See Arm and pincer |
 | Jar walls | x = ±2.95, from y = 3.9 (hidden inside the bed) up to y = 6.4. The jar is about 85% of the bed's width, leaving a small gap of red on each side |
 | Jar dome | Half-ellipse, 2.95 wide and 2.76 tall, crown at y ≈ 9.2. **No knob** |
 | Glass | Wall thickness 0.18, grown inward so the outer silhouette is unchanged |
@@ -204,6 +204,14 @@ b.reach(x, y);           // scene coords; b.reach(null) relaxes the arm
 b.jaw(0..1);             // override the pincer opening; b.jaw(null) = emotion default
 b.grab('ball' | 'star' | 'flag' | 'bulb', { at: [x, y] });   // without `at`, the prop pops into the jaws
 b.release();             // drop the held prop
+b.wave(true);            // raise the arm and wave; b.wave(false) stops
+b.lookAt('viewer');      // eyes straight ahead, at the audience
+b.setLetters('brain', { x, y, size });   // cut-paper letters in scene pixels (behind Brian)
+b.fadeLetters(0..1, seconds);
+b.carry(i, { group: [j, k] });           // the pincer fetches letter i and carries it (and the group)
+b.carryTo(x, y, seconds);                // move the carried letter; the arm follows
+b.putDown();                             // let go; the letter stays where it is
+b.cue({ ... });                          // apply one cue object (the same fields as the cue files)
 
 b.update(dt);            // seconds; all animation is time-based
 b.draw(g, { x, y, scale });   // x,y = ground-contact point in pixels; scale = px per unit (optional overrides)

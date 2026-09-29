@@ -32,6 +32,9 @@ he uses to gesture, reach and carry props.
 | `export.mjs` | Renders a cue list to PNGs using Playwright in headless Chromium, plus an optional ffmpeg preview |
 | `cues/demo.json` | 24 s demo at 1920×1080, 30 fps, covering the first 9 emotions and moves in both directions. Rig at 20% of frame height |
 | `cues/emotions.json` | 50 s, all 20 emotions at 2.5 s each. Rig at scale 40, centred |
+| `cues/intro.json` | The "brainwagon → brain wagon → brian wagon" title animation (37 s, opaque dark background, with `sfx`, `marks` and an `audio` path). **Generated** by `tools/make-intro.mjs`; don't hand-edit |
+| `tools/make-intro.mjs` | Director script: simulates the rig headlessly and writes `cues/intro.json`, placing cues and sound effects on what actually happens |
+| `tools/make-audio.py` | Chiptune score + sound effects (numpy/scipy, 8-bit quantised), driven by the cue file's `marks`, `sfx` and `fade` |
 | `cues/pincer.json` | 16 s demo of reach, grab, carry and release with all four props. Rig at scale 40 |
 | `brian_wagon_sketch.png` | Mark's concept sketch. Adopted in part (see "Design decisions") |
 | `out/` | Rendered frames. **Ignored and untracked**; regenerate with `node export.mjs cues/demo.json` or `cues/emotions.json` (add `--preview` for an MP4) |
@@ -54,6 +57,30 @@ he uses to gesture, reach and carry props.
   `moveTo: {x, seconds, ease}`, `setX`, `face`, `trigger`, `reach: [x,y] | null`,
   `jaw: 0..1 | null`, `grab: "ball" | {prop, at: [x,y]}`, `release: true`.
 
+## Making the intro animation
+```
+node tools/make-intro.mjs                                   # writes cues/intro.json
+python3 tools/make-audio.py cues/intro.json out/intro/audio.wav
+node export.mjs cues/intro.json --preview                   # frames + out/intro/intro.mp4 (with audio)
+node export.mjs cues/intro.json --stills 6.5,13,25 --out dir   # several stills in one pass
+```
+- Cut-paper letters are a scene layer in the rig, drawn behind Brian. The pincer fetches a letter
+  (`carry`), carries it (`carryTo`) and puts it down (`putDown`); a `group` of letters can be dragged
+  with it. The letter rides the jaws, so the arm must be able to reach it (the arm extends up to 6.5).
+- Brian's scale (42) and the text row (y = 525, em = 150 px) were chosen together so that the pivot
+  can reach the text from just below it. Change one and check the other.
+- The timeline is measured, not guessed: `make-intro.mjs` steps the rig frame by frame with the same
+  code path as `render.html` (`rig.cue()`), so it knows when the jaws really close.
+- The set (`spec.stage` → `rig.setStage()`): floorboards and bunting behind Brian, curtains in front of
+  him (he enters from behind the left one). It is drawn only when `draw()` has no position overrides,
+  so the preview page and its PNG export are unaffected. Keep him clear of the curtains (about the
+  outer 200 px each side).
+- Letters fade as whole layers (one scratch canvas per letter), so overlapping strokes stay uniform.
+- Music sections come from the `marks` in the cue file; sound effects come from `sfx`. The audio
+  fades with the video's final `fade` cue.
+- The score is a synthesised chiptune. It hasn't been listened to by me, only checked for level
+  and clipping, so give it a listen and tune `tools/make-audio.py` by ear.
+
 ## API (brian-wagon.js)
 ```js
 const b = new BrianWagon({ seed, x, y, scale, facing, emotion, drift: 0.3, boil: 0.03,
@@ -66,6 +93,10 @@ b.reach(px, py) / b.reach(null);                     // arm extends toward a sce
 b.jaw(0..1) / b.jaw(null);                           // override pincer opening; null = emotion default
 b.grab('ball'|'star'|'flag'|'bulb', { at: [px, py] });  // no `at`: prop pops into the jaws
 b.release();                                         // prop falls, bounces once, fades
+b.wave(true|false); b.lookAt('viewer');              // wave; look straight at the audience
+b.setLetters(text, {x,y,size}); b.fadeLetters(a, s); // cut-paper letters (scene px)
+b.carry(i, {group}); b.carryTo(x,y,s); b.putDown(); // pincer moves letters
+b.cue({...});                                        // apply one cue object
 b.update(dt);                                        // seconds; time-based, deterministic per seed + dt sequence
 b.draw(target?, { x, y, scale });                    // target: none (p5 global), p5 instance, p5.Graphics, canvas, or 2D ctx
 ```
