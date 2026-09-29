@@ -945,65 +945,7 @@
       return top.concat(bot.reverse());
     }
 
-    _drawOverlays(ctx, fx) {
-      const P = this.p, t = this.t, B = this._B;
-      const fs = fx < 0 ? -1 : 1;
-      const ax = B.x * 0.6 + this._K.x, ay = B.y * 0.6;
-      const put = (id, glyph, c, lx, ly, size, rot, pres, alpha = 1) => {
-        if (pres < 0.01 || alpha <= 0) return;
-        const sc = size * backOut(clamp(pres, 0, 1));
-        if (sc <= 0.005) return;
-        ctx.save();
-        ctx.globalAlpha = clamp(alpha, 0, 1);
-        ctx.translate((lx + ax) * fx, ly + ay);
-        ctx.rotate(rot * fs);
-        ctx.scale(sc, sc);
-        this._sticker(ctx, glyph, id, c, sc);
-        ctx.restore();
-      };
-
-      if (P.ovQuestion > 0.01) {
-        const q = P.ovQuestion;
-        put('q1', GLYPH.question, PAL.ink, 3.7, 9.7, 1.8, 0.15 * Math.sin(TAU * 0.6 * t), q);
-        put('q2', GLYPH.question, PAL.ink, 5.0, 11.0, 1.1, -0.2 * Math.sin(TAU * 0.5 * t + 1), clamp(q * 2 - 1, 0, 1));
-      }
-      if (P.ovExclaim > 0.01) {
-        put('ex', GLYPH.exclaim, PAL.ink, 3.7, 9.8 + 0.24 * Math.abs(Math.sin(TAU * 1.6 * t)), 1.9, 0.1, P.ovExclaim);
-      }
-      if (P.ovSparkle > 0.01) {
-        [[4.0, 9.3, 1.1], [-4.5, 8.6, 0.8], [1.6, 10.7, 0.7]].forEach(([x, y, s], i) => {
-          const tw = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(TAU * 1.1 * t + i * 2.1));
-          put('sp' + i, GLYPH.sparkle, PAL.gold, x, y, s * tw, 0.2 * i, P.ovSparkle);
-        });
-      }
-      if (P.ovThought > 0.01) {
-        [[2.4, 9.6, 0.18], [3.3, 10.3, 0.26], [4.4, 11.1, 0.36]].forEach(([x, y, r], i) => {
-          const pulse = 1 + 0.15 * Math.sin(TAU * 0.8 * t - i * 0.9);
-          put('th' + i, GLYPH.dot, PAL.ink, x, y, 2 * r * pulse, 0, clamp(P.ovThought * 3 - i, 0, 1));
-        });
-      }
-      if (P.ovSweat > 0.01) {
-        const u = (t / 1.8) % 1;
-        put('sw', GLYPH.drop, PAL.drop, 4.2, 8.4 - 0.6 * u, 0.9, 0, P.ovSweat, Math.min(1, (1 - u) / 0.25));
-      }
-      if (P.ovAnger > 0.01) {
-        put('an', GLYPH.anger, PAL.red, 3.6, 9.7, 1.5 * (1 + 0.1 * Math.sin(TAU * 3 * t)), 0.1, P.ovAnger);
-      }
-      if (P.ovHeart > 0.01) {
-        for (let i = 0; i < 3; i++) {
-          const u = (t * 0.3 + i / 3) % 1;
-          const a = Math.min(1, u / 0.15) * Math.min(1, (1 - u) / 0.3);
-          put('hr' + i, GLYPH.heart, PAL.pink, [-1.8, 0.2, 2.0][i] + 0.3 * Math.sin(u * TAU + i * 2), 9.5 + u * 2.2, 1 + 0.5 * u, 0.15 * Math.sin(u * TAU * 2 + i), P.ovHeart, a);
-        }
-      }
-      if (P.ovZzz > 0.01) {
-        for (let i = 0; i < 3; i++) {
-          const u = (t * 0.35 + i / 3) % 1;
-          const a = Math.min(1, u / 0.15) * Math.min(1, (1 - u) / 0.3);
-          put('z' + i, GLYPH.zed, PAL.ink, 2.5 + u * 1.9 + 0.2 * Math.sin(u * TAU), 9.6 + u * 2.0, 0.6 + 0.7 * u, -0.15, P.ovZzz, a);
-        }
-      }
-    }
+    _drawOverlays(ctx, fx) { this._drawOverlaysAt(ctx, fx, this._B.x * 0.6 + this._K.x, this._B.y * 0.6); }
 
     _drawConfetti(ctx) {
       const x0 = this.x / this.scale;
