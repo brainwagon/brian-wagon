@@ -1,9 +1,8 @@
 # Brian Wagon — Handoff
 
-Handoff date: 2026-09-29 (end of the session that matched Bluemark to his sketch). Everything is committed on branch
-**`bluemark`** (working tree clean); this session's work is one commit on top of the earlier `brush` merge, the character
-refactor and Bluemark (22 commits ahead of `main`). **`main` does not have any of the second-character work yet**, and
-nothing has been pushed. `main` is also 7 commits ahead of `origin/main`.
+Handoff date: 2026-09-29 (end of the session that matched Bluemark to his sketch). Everything is committed, **merged
+into `main`** (a fast-forward of branch `bluemark`: the `brush` merge, the character refactor, Bluemark and this
+session's sketch match) and **pushed to `origin/main`**. The `bluemark` branch is kept locally, level with the merge.
 
 ## Current state
 - **Two characters**: Brian Wagon and **Bluemark** (a stooped blue zombie, `characters/bluemark.js`), on a shared core with a
@@ -358,7 +357,7 @@ and arm in red; drift 0.3; no lettering on the wagon; he doesn't speak; usually 
 - **No Windows paths.** Nothing depends on Windows-side paths.
 
 ## Suggested next steps
-A. **Decide what to do with the `bluemark` branch**: it is the branch to merge into `main`. Nothing is pushed.
+A. The `bluemark` branch is merged into `main` and pushed; it can be deleted, or kept for further Bluemark work.
 B. **Bluemark:** get Mark's reaction to the last two changes (muzzle, brain emblem).
    Known gaps vs the sketch: no ink outlines (flat style), the standing pose is taller and less crouched than the
    sketch's, the muzzle is a flat patch rather than a soft wash. `cues/bluemark-emotions.json` still lists 20 emotions;
