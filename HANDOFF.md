@@ -1,25 +1,32 @@
 # Brian Wagon — Handoff
 
-Handoff date: 2026-09-29 (updated after adding Bluemark). Work is on branch `bluemark`, which also carries the
-`brush` merge and the character refactor; `main` does not have the second character yet.
+Handoff date: 2026-09-29 (end of the session that added Bluemark). Everything is committed on branch **`bluemark`**
+(working tree clean). That branch carries the earlier `brush` merge, the character refactor and Bluemark
+(22 commits ahead of `main`); **`main` does not have any of the second-character work yet**, and nothing has been pushed.
+`main` is also 7 commits ahead of `origin/main` from before this session.
 
 ## Current state
-- **Two characters now**: Brian Wagon and **Bluemark** (a stooped blue zombie, `characters/bluemark.js`), on a shared
-  core with a character registry and a `Scene` host. Adding a third is one file plus one manifest line: see
-  `docs/adding-a-character.md`. Brian's output was verified byte-identical through the whole refactor
-  (`tools/regress.mjs`).
-- The rig, spec (revision 2), preview page and cue files all match each other.
-- `out/demo/` (from `cues/demo.json`) and `out/emotions/` (from `cues/emotions.json`, all 20
-  emotions, plus `preview.mp4` on grey) were rendered from the current code. `out/` is ignored,
-  so regenerate it after any rig change.
-- A `python3 -m http.server 8123` may still be running from this session. If not, restart it
+- **Two characters**: Brian Wagon and **Bluemark** (a stooped blue zombie, `characters/bluemark.js`), on a shared core with a
+  character registry and a `Scene` host. Adding a third is one file plus one manifest line: see
+  `docs/adding-a-character.md`. Brian's flat output is byte-identical to before the refactor, and his brush output matched
+  the baseline too (`tools/regress.mjs`).
+- **Bluemark was shaped by Mark's feedback, all as targeted edits** (he said not to rebuild him wholesale until told, so
+  keep making small edits unless he says otherwise). Applied so far: the eyes are drawn near-eye first and are plain white
+  (no pupils, no outlines); the head and cap follow the sketch (spline head with a long jaw and heavy chin, tall squared
+  cap with a whiter front panel and a small brain emblem, an **off-white front-only brim that tapers to a near point**); no
+  ear; a cheek hollow, sideburn strands, bangs and two dark nostrils; the lower torso is black trousers with a rounded
+  seat and the **shirt hangs down over the hips and tops of the thighs**; default size is **3% of frame height** (50%
+  larger than Brian's 2%); the hop has **a wind-up crouch, a push-off and a landing dip, at twice the earlier height**.
+  Details are in `character-spec-bluemark.md`.
+- **Videos in `out/` (ignored, regenerate as needed):** `out/intro/intro.mp4` is the flat intro, 38 s, YouTube-spec encode,
+  rendered before Bluemark was added (Brian's output has not changed since). `out/intro-brush/intro-brush.mp4` is **stale**:
+  it predates the letter-grip change, the slimmer jaws, the larger confetti and the refactor.
+- `cues/intro.json` is generated (`tools/make-intro.mjs`); it currently describes a 38 s timeline.
+- **Deliverable in progress: the "brainwagon" title animation.** Mark's feedback so far has been visual and all addressed.
+  He has not yet given feedback on the audio, so **the score and effects are the least-checked part**: they were only
+  verified for level and clipping, never listened to. Bluemark is not in the intro.
+- A `python3 -m http.server 8123` may still be running from this session, serving this directory. If not, restart it
   (see "Running it").
-- **Deliverable in progress: the "brainwagon" title animation.** `out/intro/intro.mp4` is 1920×1080
-  (16:9), 30 fps, 37 s, with chiptune music and sound effects, rendered from the current code.
-  Mark's feedback so far has been visual (letter gaps, boil, fade opacity, set dressing, tassels), all
-  addressed and committed. He has not yet given feedback on the audio, so **the score and effects are
-  the least-checked part**: they were only verified for level and clipping, never listened to.
-- Nothing is half-done in the code.
 
 ## What this is
 Brian Wagon is an animated avatar for explainer videos: a disembodied brain in a
@@ -66,30 +73,41 @@ he uses to gesture, reach and carry props.
 ## Running it
 - **Preview:** `python3 -m http.server 8123` in this directory, then open
   `http://localhost:8123/index.html` in a Windows browser. Needs internet for p5.
-  - Click the stage to drive him there, and the eyes follow the mouse.
-  - Keys: 1–9 the first nine emotions (the panel buttons cover all 20), ←/→ facing, space pause, B blink, H hop, C confetti,
-    P cycle props, R release, S save a 1080p transparent PNG.
-  - The Pincer panel has prop buttons, Release, "Reach mouse" and a jaw slider.
+  - The **Character** selector picks Brian, Bluemark, or Both; the emotion, trigger, gesture and extra-panel controls and the
+    key bindings are generated from each character's `META`. With Both, the buttons under the selector choose which one the
+    controls drive, and "Look at each other" wires their gazes together.
+  - Click the stage to drive the selected character there, and the eyes follow the mouse.
+  - Common keys: 1–9 the first nine emotions (the panel buttons cover all 20), ←/→ facing, space pause, S save a 1080p
+    transparent PNG. Brian: B blink, H hop, C confetti, P cycle props, R release. Bluemark: B blink, H hop, C chomp,
+    T stagger.
+  - Brian's Pincer panel has prop buttons, Release, "Reach mouse" and a jaw slider; Bluemark's Gestures panel has wave
+    on/off and "Point at mouse".
+  - The Size slider sets Brian's size; each character is scaled by its own default relative to Brian's.
 - **Export:**
   - `node export.mjs cues/demo.json` writes `out/demo/frame_NNNNN.png` (about 12 s for
     720 frames).
-  - `--preview` also makes an MP4 composited on grey.
+  - `--preview` also makes an MP4 (composited on grey, or with the audio track for opaque cue files). MP4s are encoded to
+    YouTube's upload guidelines by default (H.264 High, CRF 15, Rec. 709 tagged, keyframe every 0.5 s, 2 B-frames,
+    faststart; audio AAC 320k at 48 kHz, two-pass loudness-normalised to -14 LUFS / -1 dBTP); `--no-youtube` gives a quick
+    plain encode.
   - `--still 3.5` renders a single frame at 3.5 s.
   - `--out dir` sets the output directory.
 - **Cue format:** see `cues/*.json` and `applyCue()` in `render.html`. Each cue has a
-  time `t` plus one or more of: `emotion` (+`intensity`, `blend`), `lookAt: [x,y] | null`,
+  time `t` (and, with several characters, `who`: an id, a list, or `"all"`) plus one or more of: `emotion` (+`intensity`, `blend`), `lookAt: [x,y] | null`,
   `moveTo: {x, seconds, ease}`, `setX`, `face`, `trigger`, `reach: [x,y] | null`,
   `jaw: 0..1 | null`, `grab: "ball" | {prop, at: [x,y]}`, `release: true`.
 
-## Hand-drawn "brush" style (branch `brush`, work in progress)
+## Hand-drawn "brush" style (merged; the look still needs tuning)
 An optional look that draws the rig through p5.brush (standalone build, no p5 needed) instead of flat cut paper.
-It needs tuning by eye; the first full render is `out/intro-brush/intro-brush.mp4`.
+It needs tuning by eye (Mark: "the brush look will require some tuning"); the one full render, `out/intro-brush/intro-brush.mp4`,
+is stale.
 - **Switches:** `node export.mjs cues/intro.json --style brush --preview` (flat is the default); `"style"` in a
   cue file, either top-level or as a timed cue; the "Hand-drawn (p5.brush)" checkbox in `index.html`;
-  `rig.setStyle('brush' | 'flat' | { mode, layers: {stage, letters, brian, props}, fill: {...}, ink: {...}, paper: {...} })`.
+  `rig.setStyle('brush' | 'flat' | { mode, layers: {stage, letters, brian, bluemark, props}, fill: {...}, ink: {...}, paper: {...} })`
+  (a layer with no entry is on; each character has its own layer name).
   Output goes to `out/<name>-brush/`.
 - **Files:** `brush-style.js` (the backend, options in `DEFAULTS`), `vendor/brush.js` (p5.brush 2.2.3 standalone,
-  MIT, licence alongside). The rig sends every fill through `_fill`, which hands polygons to the backend.
+  MIT, licence alongside). `Painter._fill` (in `core/rig-core.js`) sends every fill to the backend.
 - **How it works:** p5.brush assumes white paper and writes opaque pixels with the white mixed in, so each fill
   and outline is painted in black as a density map and that density becomes the alpha of the real colour, then
   is composited on the 2D context. This is why clips, alpha and the letter scratch canvases work unchanged.
@@ -132,7 +150,19 @@ for geometry, palette, emotions and API. Non-obvious bits:
 - **Limbs are drawn bone by bone** with a circle at each joint: a single ribbon round a bend self-overlaps and the
   even-odd fill punches holes in it.
 - The face (heavy lids, teeth, blood drip) and the cap (brain emblem) are drawn in head-local coordinates, rotated by
-  the head pitch, with the cap on an extra wobble spring.
+  the head pitch, with the cap on an extra wobble spring. The head outline is a Catmull-Rom spline (`HEAD`); the cap crown is
+  a superellipse (exponent 2.5); the brim is a tapered ribbon at the front only.
+- **Torso draw order matters:** the near leg is drawn *before* the torso, and inside `_drawTorso` the black trouser section
+  (extended below the spine and rounded off, so the seat has no square corner) is drawn first and the shirt over it, hanging
+  0.3 units below the bottom of the spine. The trouser ribbon must be exactly the shirt's width, or a black rim shows past
+  the shirt's back edge.
+- **Hop** (`_winding` -> `_launchHop` -> `_push` -> airborne -> landing): a crouch spring `_C` bends both knees (the pelvis drops
+  because the planted-foot solve keeps the lower foot on y = 0), the arms swing back, then a much stiffer spring straightens
+  the legs with the feet planted while the arms whip forward, and the leap (`HOP_SPEED` = 7.6 x sqrt 2, peak about 1.6 units)
+  starts when the legs are nearly straight. Landing gives the knees a dip scaled by impact speed. The wind-up is about 0.2 s
+  plus a 0.07 s push-off; Mark said it feels quick relative to the leap, so lengthening it (and deepening the crouch) is the
+  obvious next tweak.
+- Emotion parameters `pupil`, `gazeX`, `dartRate` etc. are still blended but nothing draws pupils any more (they were removed).
 
 ## Regression harness
 `node tools/regress.mjs` renders `demo`, `emotions`, `pincer` and `intro` and compares **every flat frame** by md5
@@ -263,7 +293,7 @@ and arm in red; drift 0.3; no lettering on the wagon; he doesn't speak; usually 
   wagon drives off.
 
 ## Gotchas
-- **Brush and Bluemark (found when brush was first tried on the shared scene; not yet tuned).** It works: Bluemark
+- **Brush and Bluemark (found when brush was first tried on the shared scene, before the recent Bluemark edits; not yet tuned).** It works: Bluemark
   draws on his own `bluemark` layer, the stage, both characters and one paper-grain pass compose correctly, the preview's
   brush checkbox works with both characters, and Brian's brush output is unchanged. The look has problems:
   - On the dark stage his **white shirt goes translucent grey** and his **black trousers almost vanish**: the
@@ -279,13 +309,15 @@ and arm in red; drift 0.3; no lettering on the wagon; he doesn't speak; usually 
   `npx playwright install chromium-headless-shell` would fix the mismatch properly.
 - **`out/` is untracked but the first commit's history still holds the old PNGs**
   (about 45 MB). History was not rewritten.
-- **Contact sheets.** To review looks, render a contact sheet: one rig per emotion on a
-  single canvas, driven through `render.html` with Playwright. The script used lived in
-  the session scratchpad and is gone. Recreating it takes about 30 lines (loop over
-  `BrianWagon.EMOTIONS`, `update(1/30)` × 75, `draw(ctx)`).
+- **Contact sheets and sizes.** `node tools/contact-sheet.mjs <id> --scale 21.6` (and `--scale 40 --cols 3` for a close-up,
+  `--emotions a,b,c` for a few, `--style brush`) renders every emotion of a character in a grid through the normal exporter.
+  Use it after every character edit. Bluemark's recent detail changes (nostrils, plain eyes, tapered brim) have only been
+  checked at 60-90 px/unit, not at 21.6.
 - **Checking sizes.** Check both small (scale ≈ 21.6 px/unit, which is 20% of 1080p) and
   close-up (40–60 px/unit). The face details are near the limit of legibility at the
-  small size.
+  small size, and Bluemark's default is 32.4 px/unit (3%).
+- **Scale in cue files.** A `rigs` entry with no `scale` gets the character's `META.defaults.scale`; `cues/bluemark-demo.json`
+  (40) and `cues/duo.json` (Brian 34, Bluemark 36) set theirs explicitly, so they did not grow with the 50% default change.
 - **Preview reseed.** The Seed "Apply" button rebuilds the rig, which drops any held prop
   and pending reach.
 - **Ignored inputs.** Reach targets ignore the body's pitch and the jar tilt, so the jaws
@@ -293,9 +325,17 @@ and arm in red; drift 0.3; no lettering on the wagon; he doesn't speak; usually 
 - **No Windows paths.** Nothing depends on Windows-side paths.
 
 ## Suggested next steps
+A. **Decide what to do with the `bluemark` branch**: it is the branch to merge into `main`. Nothing is pushed.
+B. **Bluemark, on Mark's word:** he can ask for more targeted edits (hat, head, body, motion). Ideas he has not asked for:
+   lengthen the hop wind-up, a curved or ragged shirt hem, fingers on the hands, sound effects (footsteps, groans) in
+   `tools/make-audio.py`, check the small 21.6 px/unit size, and use `twitch`/`chompRate` (declared, unused).
+C. **Tune the brush look** (see Gotchas): opaque underpaint so light shirts and dark trousers survive the density-to-alpha
+   model, thinner or no ink outlines on bones and eyes, the bunting haze; then re-render `out/intro-brush/`.
+D. **Re-render `out/intro-brush/`** (about an hour at ~3 s a frame) once the brush look is settled, so it has the letter grip,
+   slimmer jaws and larger confetti.
 0. Get Mark's reaction to the intro (audio especially), then tune. Likely knobs:
    - **Audio:** tempo, melody and mix in `tools/make-audio.py` (levels in the "master" block).
-   - **Length (37 s):** the three letter moves take the longest. Shorten pauses and `secs` values in
+   - **Length (38 s):** the three letter moves take the longest. Shorten pauses and `secs` values in
      `tools/make-intro.mjs`, then regenerate the cue file and audio.
    - **Set:** the floor reads a little like bricks (short staggered boards). Long planks or a lighter
      colour is a small change in `_drawStageBack`.
