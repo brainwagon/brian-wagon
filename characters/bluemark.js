@@ -37,6 +37,8 @@
     reach: 1.75,               // half a stride: how far the foot travels forward/back of the hip when walking
   };
   const LEG_LEN = G.thigh + G.shin;
+  // Launch speed of the hop (rig units/s); gravity is 36, so the peak height is HOP_SPEED^2 / 72 = 1.6 units (7.6 gave 0.8).
+  const HOP_SPEED = 7.6 * Math.SQRT2;
 
   // Face features in head-local units (head centre at the origin, facing +x).
   const EYE = [{ x: 0.25, y: 0.25, rx: 0.4 }, { x: 0.98, y: 0.18, rx: 0.48 }];   // far, near
@@ -132,6 +134,10 @@
       this._Ar = [{ a: 0.22, v: 0, e: 0.3, ev: 0 }, { a: 0.22, v: 0, e: 0.3, ev: 0 }];   // far, near arm: angle from hanging, elbow flex
       this._armT = [{ a: 0.22, e: 0.3 }, { a: 0.22, e: 0.3 }];
       this._hopY = 0; this._hopV = 0;
+      this._winding = null;                   // seconds into the hop's wind-up crouch, or null
+      this._push = false;                     // the push-off: legs straighten with the feet still planted
+      this._swingT = 0;                       // seconds left of the forward arm swing that follows the launch
+      this._C = { c: 0, v: 0 };               // crouch amount (spring): 0 standing .. 1 deep knee bend
       this._bobPh = 0; this._swayPh = 0; this._bouncePh = 0;
       this._waveT = 0; this._waveAmt = 0;
       this._aim = null;                       // scene point the near arm points at
@@ -156,7 +162,8 @@
       const A = this._Ar;
       if (name === 'blink') this._blinkT = 0;
       else if (name === 'hop') {
-        if (this._hopY <= 0 && this._hopV <= 0) { this._hopV = 6; this._T.v += 0.8; this._Hd.v -= 1.2; A.forEach((a) => { a.v -= 2; }); }
+        // Wind-up first: the knees bend and the arms swing back (see _updateBody), then it launches (_launchHop).
+        if (this._hopY <= 0 && this._hopV <= 0 && this._winding == null) this._winding = 0;
       } else if (name === 'chomp') this._chompT = 0;
       else if (name === 'stagger') { this._T.v -= 2.2; this._Hd.v += 2.5; this._Cp.v += 3; A.forEach((a) => { a.v -= 3; }); }
       else throw new Error(`Bluemark: unknown trigger "${name}"`);
@@ -202,6 +209,8 @@
       this._lookPitch += ((this._pupilT[1][1] || 0) * 0.22 - this._lookPitch) * Math.min(1, dt * 4);
       this._waveAmt += (this._waveT - this._waveAmt) * Math.min(1, dt * 6);
       if (this._chompT >= 0 && (this._chompT += dt) > 0.9) this._chompT = -1;
+      if (this._swingT > 0) this._swingT -= dt;
+      if (this._winding != null && ((this._winding += dt) >= 0.3 || (this._winding > 0.1 && this._C.c >= 0.88))) this._launchHop();
 
       // Arm targets: hang and swing, raise, wave, or aim.
       const p = this._pose();
@@ -228,8 +237,21 @@
             a = lerp(a, q.a, clamp(wgt, 0, 1)); e = lerp(e, q.e, clamp(wgt, 0, 1));
           }
         }
+        // hop: the arms swing back behind the body during the wind-up, then whip forward and up for the push-off
+        // and the first part of the leap
+        if (this._winding != null) { a = -1.1; e = 0.12; }
+        else if (this._push || this._swingT > 0) { a = 1.55; e = 0.45; }
         this._armT[i] = { a, e };
       }
+    }
+
+    // End of the wind-up: spring up.  The legs snap straight (the crouch spring releases), the torso rocks back, and
+    // the arms whip up and forward.
+    _launchHop() {
+      this._winding = null;
+      this._push = true;                       // the legs straighten first; the leap itself starts in _physics
+      this._swingT = 0.32;                     // the arms swing forward and up through the push-off and take-off
+      this._T.v -= 1.6; this._Hd.v += 1.6; this._Cp.v += 1.5;
     }
 
     // Analytic two-bone solve: arm angle (from hanging) and elbow flex that put the wrist at tgt (rig units).
@@ -261,16 +283,25 @@
       // Arms: pendulums that follow their targets and swing with the body.
       for (let i = 0; i < 2; i++) {
         const A = this._Ar[i], AT = this._armT[i];
-        A.v += h * (-32 * (A.a - AT.a) - 3 * A.v - T.v * 1.5 - aL * 0.03);
+        // stiffer while crouching / pushing off, so the arms swing back and whip forward in time with the legs
+        const stiff = this._winding != null || this._push || this._swingT > 0 ? 1 : 0;
+        A.v += h * (-(32 + 230 * stiff) * (A.a - AT.a) - (3 + 14 * stiff) * A.v - T.v * 1.5 - aL * 0.03);
         A.a = clamp(A.a + h * A.v, -1.2, 3.3);
         A.ev += h * (-45 * (A.e - AT.e) - 4 * A.ev);
         A.e = clamp(A.e + h * A.ev, -0.2, 2.4);
       }
+      // Crouch: deep while winding up, a slight tuck in the air, standing otherwise.
+      const C = this._C, air = this._hopY > 0 || this._hopV > 0;
+      // (the push-off uses a much stiffer spring so the legs snap straight in about a tenth of a second)
+      const tgt = this._winding != null ? 1 : this._push ? -0.05 : air ? 0.22 : 0;
+      C.v += h * (-(this._push ? 900 : 150) * (C.c - tgt) - (this._push ? 55 : 17) * C.v);
+      C.c = clamp(C.c + h * C.v, -0.25, 1.15);
+      if (this._push && C.c < 0.3) { this._push = false; this._hopV = HOP_SPEED; }   // legs nearly straight: leave the ground
       // Hop.
       if (this._hopY > 0 || this._hopV > 0) {
         this._hopV -= 36 * h;
         this._hopY += this._hopV * h;
-        if (this._hopY <= 0) { this._hopY = 0; this._hopV = 0; T.v -= 1.0; Hd.v += 1.4; Cp.v += 1.5; this._Ar.forEach((a) => { a.v += 2; }); }
+        if (this._hopY <= 0) { this._hopY = 0; this._hopV = 0; T.v -= 1.0; Hd.v += 1.4; Cp.v += 1.5; this._Ar.forEach((a) => { a.v += 2; }); C.v += 5 * (HOP_SPEED / 7.6); }   // C.v: the knees give on landing (more, the faster he comes down)
       }
       this._stepPupils(h);
     }
@@ -279,7 +310,8 @@
 
     _pose() {
       const P = this.p, t = this.t, g = this._gaitAmt, phi = this._phi;
-      const lean = G.baseLean + P.slump * 0.32 + this._T.r + 0.012 * Math.sin(TAU * 0.25 * t) + 0.5 * P.sway * Math.sin(TAU * this._swayPh);
+      const cr = clamp(this._C.c, 0, 1.15);
+      const lean = G.baseLean + P.slump * 0.32 + this._T.r + 0.012 * Math.sin(TAU * 0.25 * t) + 0.5 * P.sway * Math.sin(TAU * this._swayPh) + 0.32 * cr;
 
       // Legs, relative to the hip, then the pelvis is dropped so the lower foot just touches the ground.
       // The foot's horizontal position is driven directly: it moves back at exactly the body's speed while planted
@@ -289,10 +321,10 @@
         const hx = G.reach * g;
         const fx = (u >= 0.25 && u < 0.75 ? hx * (1 - 4 * (u - 0.25)) : -hx * Math.cos(Math.PI * (((u - 0.75 + 1) % 1) / 0.5)))
           + (i ? 0.35 : -0.35) * (1 - g) + 0.2;
-        const kb = G.kneeFlex + G.swingFlex * g * Math.max(0, swing);
+        const kb = G.kneeFlex + G.swingFlex * g * Math.max(0, swing) * (1 - cr) + 1.75 * cr;   // crouch: deep knee bend, both legs
         const fa = 0.4 * g * Math.max(0, swing);              // toe lifts while the leg swings through
-        let t1 = Math.asin(clamp(fx / LEG_LEN, -0.9, 0.9));
-        for (let n = 0; n < 4; n++) {
+        let t1 = kb * 0.5 + Math.asin(clamp(fx / LEG_LEN, -0.9, 0.9));
+        for (let n = 0; n < 8; n++) {
           const f = G.thigh * Math.sin(t1) + G.shin * Math.sin(t1 - kb) - fx, d = G.thigh * Math.cos(t1) + G.shin * Math.cos(t1 - kb);
           t1 -= f / (d || 1);
         }

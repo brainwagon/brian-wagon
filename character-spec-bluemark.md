@@ -59,7 +59,13 @@ from the shirt). Every shape has an id prefixed `bm.` so its boil and brush seed
   torso, follows the gaze a little), cap wobble (driven by the head), two arm pendulums plus elbow flex (swing
   against the legs, follow their targets).
 - **Idle:** slow breathing (0.25 Hz) on the torso, `bob` on the head, optional `sway`.
-- **Hop:** the same jump physics as Brian's; landings jolt the torso, head, cap and arms.
+- **Hop:** it has anticipation, in four phases. (1) **Wind-up** (about 0.2 s): a crouch spring drives both knees deeply
+  bent (the pelvis drops about 1.7 units because the planted foot solve keeps the feet on the ground), the torso leans
+  in and the arms swing back. (2) **Push-off** (about 0.07 s): a much stiffer spring snaps the legs straight with the
+  feet still planted while the arms whip forward and up. (3) **Leap:** it leaves the ground when the legs are nearly
+  straight (peak about 1.6 units, in the air about 0.6 s; `HOP_SPEED` in the code), with the knees tucking slightly and the arms coming back
+  down. (4) **Landing:** the knees give (a crouch impulse), and the torso, head, cap and arms jolt. The state is
+  `_winding`, `_push`, `_swingT` and the crouch spring `_C`; `_launchHop()` ends the wind-up.
 
 ## Gestures and props
 - **Wave:** the near arm goes up and back, with a swinging forearm. `wave(true|false)` or the cue key `wave`.
