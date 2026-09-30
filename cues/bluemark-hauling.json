@@ -1,0 +1,5 @@
+{
+  "width": 972, "height": 1280, "fps": 30, "duration": 4, "seed": 3, "background": "#ffffff",
+  "rigs": [{ "id": "bm", "type": "bluemark", "x": 540, "y": 1212, "scale": 90, "facing": "left", "emotion": "hauling" }],
+  "cues": []
+}

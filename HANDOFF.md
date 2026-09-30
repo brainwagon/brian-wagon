@@ -1,23 +1,33 @@
 # Brian Wagon — Handoff
 
-Handoff date: 2026-09-29 (end of the session that added Bluemark). Everything is committed on branch **`bluemark`**
-(working tree clean). That branch carries the earlier `brush` merge, the character refactor and Bluemark
-(22 commits ahead of `main`); **`main` does not have any of the second-character work yet**, and nothing has been pushed.
-`main` is also 7 commits ahead of `origin/main` from before this session.
+Handoff date: 2026-09-29 (end of the session that matched Bluemark to his sketch). Everything is committed on branch
+**`bluemark`** (working tree clean); this session's work is one commit on top of the earlier `brush` merge, the character
+refactor and Bluemark (22 commits ahead of `main`). **`main` does not have any of the second-character work yet**, and
+nothing has been pushed. `main` is also 7 commits ahead of `origin/main`.
 
 ## Current state
 - **Two characters**: Brian Wagon and **Bluemark** (a stooped blue zombie, `characters/bluemark.js`), on a shared core with a
   character registry and a `Scene` host. Adding a third is one file plus one manifest line: see
   `docs/adding-a-character.md`. Brian's flat output is byte-identical to before the refactor, and his brush output matched
   the baseline too (`tools/regress.mjs`).
-- **Bluemark was shaped by Mark's feedback, all as targeted edits** (he said not to rebuild him wholesale until told, so
-  keep making small edits unless he says otherwise). Applied so far: the eyes are drawn near-eye first and are plain white
-  (no pupils, no outlines); the head and cap follow the sketch (spline head with a long jaw and heavy chin, tall squared
-  cap with a whiter front panel and a small brain emblem, an **off-white front-only brim that tapers to a near point**); no
-  ear; a cheek hollow, sideburn strands, bangs and two dark nostrils; the lower torso is black trousers with a rounded
-  seat and the **shirt hangs down over the hips and tops of the thighs**; default size is **3% of frame height** (50%
-  larger than Brian's 2%); the hop has **a wind-up crouch, a push-off and a landing dip, at twice the earlier height**.
-  Details are in `character-spec-bluemark.md`.
+- **Bluemark now matches his sketch (`sketches/bluemark.jpg`), in every emotion.** This session Mark asked for the match
+  and explicitly allowed reshaping body parts (the earlier "small targeted edits only" rule is relaxed for this). His
+  build and face are defaults in `NEUTRAL` that no preset overrides, so emotions change only posture and expression
+  (Mark objected when the build morphed between emotions): long legs and arms, a long humped torso drawn as **one convex
+  hull**, a big head (1.15x) **slung low in front of the chest**, the cap pushed up to the top of the skull, and the face
+  **seen nearly front-on** with features placed by measuring the sketch in head-local units (near eye big and back by the
+  ear, far eye small at the front, ticked nostrils, a pale muzzle that sits just above the top lip, a dark ">"-shaped
+  cheekbone line with shadow behind, forehead and eye wrinkles, an ear). **Teeth only on the bottom, plus a tongue**; the
+  mouth becomes the sketch's gape when wide open. **Cartoon hands, three fingers and a thumb** (fists when gripping).
+  The brain emblem is now a side-view brain with a stem. A 21st emotion, **`hauling`**, is the sketch's pose: rope in
+  both fists, braced crouched stance, and a **crouched walk** when he moves. **Pointing lifts his head** so the arm passes
+  under his chin. Earlier work still stands: plain white eyes, the tapered front-only brim, the trousers and hanging
+  shirt, 3% default size, the hop with wind-up. Details: `character-spec-bluemark.md` ("Build" and "Hauling pose").
+- **Review images** (regenerate with the commands under Bluemark below): `sketches/bluemark_reference.jpg` (the zombie cut
+  out of the sketch, no wagon/background), `sketches/bluemark_hauling_compare.png` (reference beside the render),
+  `sketches/bluemark_emotions.png` (all 21), `sketches/bluemark_hauling_walk.png`, `sketches/bluemark_pointing.png`.
+  Mark's last requests (muzzle down to the lip, brain emblem readable as a brain) were done at the end of the session;
+  he had not yet responded to them.
 - **Videos in `out/` (ignored, regenerate as needed):** `out/intro/intro.mp4` is the flat intro, 38 s, YouTube-spec encode,
   rendered before Bluemark was added (Brian's output has not changed since). `out/intro-brush/intro-brush.mp4` is **stale**:
   it predates the letter-grip change, the slimmer jaws, the larger confetti and the refactor.
@@ -63,6 +73,9 @@ he uses to gesture, reach and carry props.
 | `tools/make-audio.py` | Chiptune score + sound effects (numpy/scipy, 8-bit quantised), driven by the cue file's `marks`, `sfx` and `fade` |
 | `cues/pincer.json` | 16 s demo of reach, grab, carry and release with all four props. Rig at scale 40 |
 | `sketches/brian_wagon_sketch.png`, `sketches/bluemark.jpg` | Mark's concept sketches |
+| `sketches/bluemark_reference.jpg` | The zombie cut out of `bluemark.jpg` (wagon and background removed, white ground), the reference the face was measured from |
+| `sketches/bluemark_*.png` | Review renders: hauling vs reference, all emotions, the hauling walk, pointing |
+| `cues/bluemark-hauling.json` | 972×1280 white still of the `hauling` pose, placed to overlay `bluemark_reference.jpg` at 2× (`node export.mjs cues/bluemark-hauling.json --still 3`) |
 | `cues/bluemark-demo.json`, `cues/bluemark-emotions.json`, `cues/duo.json` | Bluemark walking, waving, pointing and reacting; all 20 of his emotions (generated by `tools/make-demo.mjs`); Brian and Bluemark together on the stage |
 | `tools/regress.mjs`, `tools/baseline.json` | Regression harness (below) |
 | `tools/check-characters.mjs` | Conformance check for every registered character (no browser) |
@@ -163,6 +176,26 @@ for geometry, palette, emotions and API. Non-obvious bits:
   plus a 0.07 s push-off; Mark said it feels quick relative to the leap, so lengthening it (and deepening the crouch) is the
   obvious next tweak.
 - Emotion parameters `pupil`, `gazeX`, `dartRate` etc. are still blended but nothing draws pupils any more (they were removed).
+- **Build vs posture.** Build keys (`legLen`, `torsoLen`, `humpK`, `armLen`, `headSc`, `headDx`/`headDy`, `shU`/`shFwd`,
+  `capUp`/`capH`, `face3q`) live in `NEUTRAL` only; keep them out of presets or he morphs when emotions blend. The
+  `face3q` = 0 code paths (old profile face: `EYE`, `MOUTH`, `HEAD_PTS`, the old cheek ribbon) are still there but unused.
+- **Measuring against the sketch.** The face constants (`EYE3`, `MOUTH3`, `NOSE3`, `GAPE_TOP/BOT`, `NOSE_HI`,
+  `CHEEK_LINE`, `HEAD3_PTS`, `JAW`) are head-local units measured by mapping reference pixels through the hauling pose's
+  head transform: render `cues/bluemark-hauling.json`, get `hc`/`psi` from the rig in node (`new Bluemark({emotion:
+  'hauling'})`, 90 updates, `_pose()`), then reference px (rx, ry) -> rig ((540 - 2rx)/90, (1212 - 2ry)/90) (facing left
+  mirrors x) -> rotate by -psi and divide by `headSc`. Resampling both images into that frame side by side made
+  mismatches obvious. The scripts were throwaway (not in the repo).
+- **Slung head layering:** neck from shoulder to head centre under the shirt; the near upper arm behind the head and the
+  forearm in front, except when the wrist is at face height or above (whole arm behind). The head swings about the
+  neck by `1.07/|offset|` of its pitch, so head moves stay small despite the long offset.
+- **Pointing:** the arm can't reach round the head, so `_headLift` (smoothed toward `_liftT`) raises and draws back the
+  head until the `JAW` points clear the shoulder-to-target line with room for the arm. The arm stays behind the head until
+  the lift is 85% done, and the pointing arm is critically damped (an overshoot swung it across the face).
+- **Hauling stance and walk:** `stance` places the feet by hand (`footB`, `footF`, `hipH`); walking fades the placement out
+  with the gait amount, but each leg's knee is still solved so the ankle sits at `hipH` (lifted in an arc while
+  swinging), which keeps both feet on the ground in the crouch. A fixed deep knee bend instead made one foot float.
+- **Mouth:** `_lips(open)` builds both lips (the parametric mouth blended into the gape by `open` 0.6..1.5); the muzzle
+  uses it at the resting `P.open` so it doesn't bob when he chews.
 
 ## Regression harness
 `node tools/regress.mjs` renders `demo`, `emotions`, `pincer` and `intro` and compares **every flat frame** by md5
@@ -326,9 +359,12 @@ and arm in red; drift 0.3; no lettering on the wagon; he doesn't speak; usually 
 
 ## Suggested next steps
 A. **Decide what to do with the `bluemark` branch**: it is the branch to merge into `main`. Nothing is pushed.
-B. **Bluemark, on Mark's word:** he can ask for more targeted edits (hat, head, body, motion). Ideas he has not asked for:
-   lengthen the hop wind-up, a curved or ragged shirt hem, fingers on the hands, sound effects (footsteps, groans) in
-   `tools/make-audio.py`, check the small 21.6 px/unit size, and use `twitch`/`chompRate` (declared, unused).
+B. **Bluemark:** get Mark's reaction to the last two changes (muzzle, brain emblem).
+   Known gaps vs the sketch: no ink outlines (flat style), the standing pose is taller and less crouched than the
+   sketch's, the muzzle is a flat patch rather than a soft wash. `cues/bluemark-emotions.json` still lists 20 emotions;
+   rerun `node tools/make-demo.mjs bluemark` to add `hauling`. `cues/duo.json` and the brush look haven't been checked
+   with his new build. Other ideas he has not asked for: lengthen the hop wind-up, a ragged shirt hem, sound effects,
+   use `twitch`/`chompRate` (declared, unused).
 C. **Tune the brush look** (see Gotchas): opaque underpaint so light shirts and dark trousers survive the density-to-alpha
    model, thinner or no ink outlines on bones and eyes, the bunting haze; then re-render `out/intro-brush/`.
 D. **Re-render `out/intro-brush/`** (about an hour at ~3 s a frame) once the brush look is settled, so it has the letter grip,

@@ -42,7 +42,7 @@ looks steady; +y up; drawn facing right. About 10 units tall (head top at about 
 | Neck | 0.5, at the top of the spine |
 | Head | a spline outline (`HEAD`): broad across the brow, hollow under the cheekbone, tapering to a long jaw and a heavy chin, about 3 wide × 3.2 tall, hanging forward of the shoulders, pitched down by `headDrop`; a darker cheek hollow curves down from the cheekbone toward the jaw; no ear is drawn |
 | Arms | upper 2.0, fore 2.0, hand ellipse 0.62; shoulder joint at 92% up the spine |
-| Cap | a tall, slightly squared crown (superellipse, 3.4 wide, 1.9 high on a 0.5 base line) with a whiter front panel and a shaded crescent down the back; an off-white brim at the front only (it does not run round the back of the head) that reaches about 0.75 past the face, thickest at the crown and tapering to a near point; the brain emblem (0.95×) left of centre on the panel, with a cream highlight, folds and a drip |
+| Cap | a tall, slightly squared crown (superellipse, 3.4 wide, 1.9 high on a 0.5 base line) with a whiter front panel and a shaded crescent down the back; an off-white brim at the front only (it does not run round the back of the head) that reaches about 0.75 past the face, thickest at the crown and tapering to a near point; the brain emblem (0.95×) left of centre on the panel: a brain seen from the side, facing forward, as in the sketch (a crown of four lobes over a rounded front, a flatter underside notched between the temporal lobe and the cerebellum, and a short brain stem hanging from the back), with a cream highlight on the crown and three small folds in a row |
 
 Draw order, back to front: far arm, far leg, hair, near leg, torso (hips block, the black trouser section, then the shirt over it with its back-fold shade, hanging over the top of the thighs), neck, head
 (skull, the cheek hollow, two dark nostrils, mouth, dark bangs and four sideburn strands, eyes with the near eye first and the far eye over it,
@@ -147,3 +147,41 @@ Interview of 2026-09-29:
 - No sound effects for him (footsteps, groans) in `tools/make-audio.py`.
 - `twitch` and `chompRate` are declared but not yet used by any preset.
 - `sleepy`, `bored` and `sad` look similar at small sizes; the lids and overlays carry the difference.
+
+## Build (from the sketch, shared by every emotion)
+His proportions and face come from `sketches/bluemark.jpg` and are the same in every emotion; emotions change only his
+posture and expression, so switching emotions never morphs his build. The build parameters default in `NEUTRAL` and no
+preset overrides them: `legLen` 1.1, `torsoLen` 1.62 (a long humped torso, `humpK` 0.6), `armLen` 1.15, `headSc` 1.15;
+`headDx`/`headDy` sling the head low in front of the chest (it swings about the neck by less than it pitches, so head
+moves stay about the size they were on a short neck); `shU`/`shFwd` put the shoulder joints at the front of the chest;
+`capUp`/`capH` push the cap up to the top of the skull, with the forehead filled in; and `face3q` 1, the face seen nearly
+front-on, with every feature at positions measured off the sketch in head-local units: a narrower, longer head with the
+chin well below the mouth; the big near eye back toward the ear; the small far eye near the front edge with a flat upper
+lid and a deep lower one; ticked nostrils under the far eye; a pale muzzle down the front of the nose, around the
+nostrils, its lower edge just above the top lip wherever the expression puts it (the resting mouth, so it doesn't bob
+when he chews); and a dark cheekbone line bent
+like a ">" and running down to the jaw, with shadow behind it.
+Also shared: an **ear** at the back of the head; **almond eyes** (pointed, slanted; near eye bigger) with a crease over
+each upper lid and two bags under it; **forehead wrinkles** and a frown between the eyes; a mouth that can tilt, with
+**teeth on the bottom only** and a **tongue**, which opens into the sketch's gape (pointed at the front, deep and square
+at the back) as `open` goes from 0.6 to 1.5; and cartoon **hands with three fingers and a thumb** (relaxed and slightly
+spread, or a fist when gripping).
+The shirt is one solid mass: the convex hull of the humped torso, the round cap on the shoulders and the round chest at
+the shoulder joint, so there are no dips between the hump and the chest.
+Layering for the slung head: the neck runs from the shoulders to the head centre under the shirt; the near upper arm is
+behind the head and its forearm in front, unless the hand is up at the face or higher (raised arms, a hand on the back
+of the head), when the whole arm goes behind.
+Pointing: the arm can't reach round the slung head or over the cap, so he lifts his head (drawing it back and tipping
+it up a little) until his jaw clears the line from the shoulder to the target, with room for the arm, and the arm
+passes under his chin. The head lifts faster than the arm swings, the arm stays behind the head until the lift is nearly
+done, and the pointing arm is critically damped so it doesn't overshoot up across his face. Targets below the jaw
+need no lift.
+
+## Hauling pose (`hauling`, the 21st emotion)
+Matches `sketches/bluemark.jpg` (reference cut-out: `sketches/bluemark_reference.jpg`; render: `sketches/bluemark_hauling.png`,
+side by side in `sketches/bluemark_hauling_compare.png`; cue file `cues/bluemark-hauling.json`). A posture only: the torso
+more upright (`slump` -0.9), the mouth gaping, `pull` 1 (both wrists go to the rope grip, a rope is drawn, the hands close
+into fists) and `stance` 1: the feet are placed by hand (`footB`, `footF`, at hip height `hipH`, knee bend solved from the
+leg length). When he walks (`gait` 0.8) the set stance gives way to the gait, but the crouch stays: each leg's knee is
+solved so the ankle sits at the stance's hip height, lifting in an arc as the leg swings through, and the steps are
+centred where the stance's feet were. His fists pump hand over hand on the rope in time with the steps.

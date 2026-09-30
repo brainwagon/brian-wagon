@@ -23,7 +23,9 @@
     cap: col('#F4F2EC'), capShade: col('#CFC9BE'), capPanel: col('#FBFAF6'), brim: col('#E3DFD4'),
     emblem: col('#EE8FA8'), emblemDeep: col('#B8456F'), emblemHi: col('#F7CDB8'),
     blood: col('#A8252B'), hair: col('#20222B'),
+    rope: col('#8A4B2F'), ropeDark: col('#4A2416'), ear: col('#4C93CE'), earIn: col('#2F6FA8'),
     lid: col('#F4F1EA'), lash: col('#1B2B3A'), nostril: col('#1B2033'), teeth: col('#F1E8C8'), mouthIn: col('#3A1518'),
+    tongue: col('#C4232F'), tongueHi: col('#E2626C'), crease: col('#2C5E93'), line: col('#1A2C45'), noseHi: col('#C4DCEF'),
   });
 
   const G = {
@@ -38,11 +40,46 @@
   };
   const LEG_LEN = G.thigh + G.shin;
   // Launch speed of the hop (rig units/s); gravity is 36, so the peak height is HOP_SPEED^2 / 72 = 1.6 units (7.6 gave 0.8).
+  // Where each wrist goes when he grips the rope (rig units from the head centre; far hand, near hand)
+  const PULL_HANDS = [[1.9, -1.25], [1.25, -2.25]];
   const HOP_SPEED = 7.6 * Math.SQRT2;
 
   // Face features in head-local units (head centre at the origin, facing +x).
-  const EYE = [{ x: 0.25, y: 0.25, rx: 0.4 }, { x: 0.98, y: 0.18, rx: 0.48 }];   // far, near
-  const MOUTH = { x: 0.72, y: -0.8, w: 0.58 };
+  // far, near.  As in the sketch's three-quarter view the near eye is the big one, further back on the head, and both
+  // slant (the back end of the near eye rises; the far eye's front end does).
+  const EYE = [{ x: 1.05, y: 0.02, rx: 0.4, tilt: 0.2 }, { x: 0.3, y: 0.2, rx: 0.6, tilt: -0.3 }];
+  const MOUTH = { x: 0.72, y: -0.8, w: 0.58, rot: 0.2 }
+  // The features when the head is seen nearly front-on (face3q = 1, as in the hauling sketch), measured off the sketch in
+  // head-local units: the big near eye sits back toward the ear, the small far eye near the front edge has a flat upper
+  // lid and a deep lower one (top/bot: lid heights relative to the eye height), and the nostrils sit under the far eye.
+  const EYE3 = [{ x: 1.0, y: 0.2, rx: 0.28, tilt: 0.2, top: 0.3, bot: 1.4 }, { x: -0.32, y: 0.24, rx: 0.54, tilt: -0.2, top: 1, bot: 0.85 }];
+  const MOUTH3 = { x: 0.15, y: -1.3 }, NOSE3 = { x: 0.72, y: -0.24 };
+  // His gaping mouth in the sketch: a point at the front under the nose, a flat top, a deep square back and a flat bottom
+  // lined with teeth.  Top and bottom lips, back to front.
+  const GAPE_TOP = [[-0.38, -1.47], [-0.34, -1.2], [-0.19, -1.02], [0.04, -0.9], [0.37, -0.85], [0.69, -1.0]];
+  const GAPE_BOT = [[-0.38, -1.47], [-0.31, -1.78], [0.0, -1.8], [0.42, -1.72], [0.5, -1.42], [0.69, -1.0]];
+  // The pale, lit muzzle: from between the eyes down the nose to the top lip.
+  const NOSE_HI = [[0.44, 0.07], [0.13, -0.03], [-0.24, -0.66], [-0.3, -0.9], [0.04, -0.86], [0.37, -0.81], [0.62, -0.92], [0.64, -0.48], [0.6, -0.06]]
+    .map(([x, y]) => [x + 0.3, y]);   // (moved toward the front of the face, off the cheek)
+  // The hollow under the near cheekbone: the bone's edge is a dark line bent back like a ">" and then running down to
+  // the jaw; behind it, to the jaw line, is shadow.
+  const CHEEK_LINE = [[-1.1, 0.02], [-0.59, -0.39], [-0.66, -0.83], [-0.69, -1.19], [-0.57, -1.58]];
+  const CHEEK_HOLLOW = [...CHEEK_LINE, [-0.66, -1.42], [-1.02, -0.75], [-1.36, -0.02]];
+  // Wrinkles across the forehead (visible when the cap is pushed up)
+  const BROW_LINES = [
+    [[-1.05, 1.4], [-0.25, 1.34], [0.6, 1.24]], [[-1.12, 1.14], [-0.3, 1.06], [0.45, 0.93]], [[-0.95, 0.9], [-0.4, 0.84], [0.15, 0.74]],
+    [[0.78, 1.1], [1.05, 1.08], [1.34, 1.02]], [[0.8, 0.84], [1.05, 0.81], [1.3, 0.76]], [[0.62, 0.62], [0.52, 0.45], [0.46, 0.28]],
+  ];
+  // Point at fraction s (0..1) of the arc length along an open polyline.
+  function along(poly, s) {
+    const len = [];
+    let tot = 0;
+    for (let i = 1; i < poly.length; i++) { tot += Math.hypot(poly[i][0] - poly[i - 1][0], poly[i][1] - poly[i - 1][1]); len.push(tot); }
+    let d = clamp(s, 0, 1) * tot, i = 0;
+    while (i < len.length - 1 && len[i] < d) i++;
+    const l0 = i ? len[i - 1] : 0, u = (d - l0) / ((len[i] - l0) || 1);
+    return [lerp(poly[i][0], poly[i + 1][0], u), lerp(poly[i][1], poly[i + 1][1], u)];
+  }
 
   const SHOE_CORNERS = [[-0.42, 0.14], [-0.44, -0.26], [0.8, -0.26], [1.12, -0.14], [1.14, 0.06], [0.55, 0.2]];
   const SHOE = densify(SHOE_CORNERS, 0.1);
@@ -60,27 +97,65 @@
     return out;
   }
   // The sketch's head: broad across the brow, hollow at the cheek, tapering to a long jaw and a heavy chin.
-  const HEAD = spline([
+  const HEAD_PTS = [
     [1.12, 1.15], [1.42, 0.62], [1.5, 0.22], [1.6, -0.12], [1.44, -0.4], [1.36, -0.66], [1.3, -0.92],
     [1.22, -1.32], [0.85, -1.66], [0.2, -1.55], [-0.5, -1.3], [-1.02, -0.9], [-1.42, -0.2], [-1.56, 0.5], [-1.0, 1.3], [0.1, 1.55],
-  ]);
+  ];
+  // Seen front-on (face3q = 1) the sketch's face is narrower and longer: a flat front edge, then a long jaw tapering
+  // from under the ear to a chin well below the mouth.  Same number of points as HEAD_PTS, so the two blend.
+  const HEAD3_PTS = [
+    [1.2, 1.3], [1.45, 0.75], [1.46, 0.25], [1.38, -0.35], [1.24, -0.8], [1.08, -1.2], [0.84, -1.58],
+    [0.46, -1.9], [0.0, -1.98], [-0.4, -1.86], [-0.68, -1.46], [-1.05, -0.75], [-1.42, 0.0], [-1.55, 0.6], [-1.0, 1.3], [0.1, 1.55],
+  ];
+  const HEAD = spline(HEAD_PTS);
+  // points along the underside of the front-on jaw, chin to cheek (a pointing arm has to pass under them)
+  const JAW = [[-0.3, -1.95], [0.0, -2.0], [0.46, -1.9], [0.84, -1.58], [1.08, -1.2], [1.24, -0.8]];
+  const headOutline = (f) => (f <= 0 ? HEAD : spline(HEAD_PTS.map((p, i) => [lerp(p[0], HEAD3_PTS[i][0], f), lerp(p[1], HEAD3_PTS[i][1], f)])));
+  // A pointed almond; top and bot are the heights of the upper and lower lids.
+  function almond(rx, top, bot, n = 40) {
+    const out = [];
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * TAU, u = Math.cos(a), v = Math.sin(a), edge = 1 - Math.pow(Math.abs(u), 1.7);
+      out.push([rx * u, (v > 0 ? top : bot) * Math.sign(v) * edge * Math.pow(Math.abs(v), 0.35)]);
+    }
+    return out;
+  }
+  // The height of that almond's lid at x (upper lid for sign +1, lower for -1), for the wrinkles that follow it.
+  const lidAt = (rx, h, x) => h * (1 - Math.pow(Math.min(1, Math.abs(x / rx)), 1.7));
+  // Convex hull of a point set (Andrew's monotone chain), counter-clockwise.
+  function hull(pts) {
+    const P = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]), cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lo = [], hi = [];
+    for (const p of P) { while (lo.length > 1 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+    for (let i = P.length - 1; i >= 0; i--) { const p = P[i]; while (hi.length > 1 && cross(hi[hi.length - 2], hi[hi.length - 1], p) <= 0) hi.pop(); hi.push(p); }
+    return lo.slice(0, -1).concat(hi.slice(0, -1));
+  }
   const rot = (x, y, a) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
   const bone = (a, b, w0, w1) => ribbon(densify([a, b], 0.1, false), (u) => lerp(w0, w1, u));
 
-  // The pink brain on the cap: a scalloped oval with two darker folds.
+  // The pink brain on the cap, as in the sketch: a brain seen from the side, facing forward (+x).  Its outline is the
+  // outer edge of a few overlapping lobes (a crown of four bumps, the front and back lobes, the temporal lobe underneath
+  // and the cerebellum behind it, with a notch between), so the bumps stay crisp; the brain stem hangs from the back
+  // (drawn separately).  Three small folds mark it, no more.
   const EMBLEM = (() => {
+    const lobes = [[0, -0.02, 0.52, 0.24], [0.38, 0.1, 0.19, 0.16], [0.14, 0.18, 0.2, 0.16], [-0.12, 0.19, 0.2, 0.16], [-0.37, 0.12, 0.19, 0.16],
+      [0.46, -0.05, 0.17, 0.15], [-0.48, -0.04, 0.16, 0.15], [0.18, -0.13, 0.26, 0.13], [-0.34, -0.15, 0.15, 0.1]];
     const p = [];
-    for (let i = 0; i < 72; i++) {
-      const a = (i / 72) * TAU, r = 1 + 0.13 * Math.sin(6 * a + 0.5) + 0.05 * Math.sin(11 * a);
-      p.push([0.5 * Math.cos(a) * r, 0.4 * Math.sin(a) * r]);
+    for (let i = 0; i < 120; i++) {
+      // along each ray from the centre, the farthest lobe edge
+      const a = (i / 120) * TAU, dx = Math.cos(a), dy = Math.sin(a);
+      let r = 0;
+      for (const [cx, cy, rx, ry] of lobes) {
+        const A = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry), B = -2 * ((cx * dx) / (rx * rx) + (cy * dy) / (ry * ry));
+        const C = (cx * cx) / (rx * rx) + (cy * cy) / (ry * ry) - 1, D = B * B - 4 * A * C;
+        if (D >= 0) r = Math.max(r, (-B + Math.sqrt(D)) / (2 * A));
+      }
+      p.push([r * dx, r * dy]);
     }
     return p;
   })();
-  const EMBLEM_FOLDS = [
-    ribbon(arcPts(-0.1, -0.02, 0.26, 200 * DEG, 340 * DEG, 0.04), 0.05),
-    ribbon(arcPts(0.12, 0.06, 0.2, 20 * DEG, 160 * DEG, 0.04), 0.05),
-    ribbon([[0.02, -0.34], [0.0, 0.34]], 0.04),
-  ];
+  // (a row of humps across the middle, like the sketch's)
+  const EMBLEM_FOLDS = [[0.3, -0.07], [0.06, -0.04], [-0.18, -0.07]].map(([x, y]) => ribbon(arcPts(x, y, 0.12, 15 * DEG, 165 * DEG, 0.03), 0.045));
 
   const NEUTRAL = {
     // eyes / face (the keys the base class reads are the same as Brian's)
@@ -91,6 +166,12 @@
     mouthW: 1, curve: 0.05, open: 0.35, wave: 0, zig: 0, skew: 0, mouthTilt: 0, tilt: 0,
     // body
     bob: 0.5, bobSpeed: 0.2, sway: 0, swaySpeed: 0.3, bounce: 0, bounceSpeed: 1.6, jiggle: 0, shudder: 0,
+    // his build, from the sketch, shared by every emotion (the emotions only change his posture): long legs and arms,
+    // a long humped torso, a big head slung low in front of the chest, the cap pushed up to the top of the skull, and
+    // the face seen nearly front-on
+    legLen: 1.1, torsoLen: 1.62, torsoW: 1, humpK: 0.6, armLen: 1.15, headSc: 1.15, headDx: 1.94, headDy: -3.2,
+    capUp: 1.08, capH: 1.15, face3q: 1, shU: 0.4, shFwd: 1.6,
+    stance: 0, hipH: 3.55, footB: -0.3, footF: 2.65, pull: 0,   // a set stance (feet placed by hand) and a two-handed rope grip
     slump: 0, headDrop: 0, headTilt: 0, armHang: 1, armRaiseN: 0, armRaiseF: 0, handChin: 0, handHead: 0, gait: 1, twitch: 0, chompRate: 0,
     // overlays
     ovSparkle: 0, ovTear: 0, ovQuestion: 0, ovExclaim: 0, ovThought: 0, ovSweat: 0, ovZzz: 0, ovAnger: 0, ovBlush: 0, ovHeart: 0,
@@ -117,6 +198,10 @@
     smug: { lidUp: 0.25, gazeFollow: 0.5, gazeX: 0.2, dartRate: 0.08, curve: 0.35, open: 0.2, mouthTilt: 0.5, headDrop: -0.2, headTilt: -0.3, slump: -0.3, sway: 0.03 },
     worried: { lidTilt: 0.35, gazeFollow: 0.5, gazeY: 0.1, dartRate: 1.4, dartAmp: 0.3, tremble: 0.05, curve: -0.2, open: 0.3, wave: 1, shudder: 0.008, slump: 0.4, headDrop: 0.5, armRaiseN: 0.22, ovSweat: 1 },
     disgusted: { lidUp: 0.15, lidAsym: 0.1, lidTilt: -0.1, gazeFollow: 0.3, gazeX: 0.5, gazeY: -0.1, curve: -0.7, open: 0.25, mouthTilt: -0.6, wave: 0.4, tilt: -0.14, headTilt: -0.6, slump: -0.2, armRaiseN: 0.15 },
+    // hauling something heavy on a rope (the sketch): torso more upright, both fists on the rope, legs braced in a wide
+    // crouched stride (when he walks the stance gives way to short, crouched steps).
+    hauling: { lidUp: -0.15, gazeFollow: 0, dartRate: 0.05, autoBlink: 0.3, curve: -0.3, open: 1.6, bob: 0.25, slump: -0.9, headDrop: 0, gait: 0.8,
+      stance: 1, pull: 1 },
     love: { lidUp: -0.05, eyeScale: 1.1, gazeFollow: 0.5, dartRate: 0.2, curve: 0.6, open: 0.25, bob: 0.9, bobSpeed: 0.35, bounce: 0.05, bounceSpeed: 1.4, sway: 0.08, headTilt: 0.4, headDrop: -0.1, ovHeart: 1 },
   };
 
@@ -143,6 +228,7 @@
       this._aim = null;                       // scene point the near arm points at
       this._chompT = -1;
       this._lookPitch = 0;
+      this._headLift = 0; this._liftT = 0;    // how far he lifts his head to point under his chin (rig units, smoothed; target)
       this.setEmotion(this.opts.emotion, { blend: 0 });   // last: it may act on the state above
     }
 
@@ -192,7 +278,8 @@
     }
 
     _eyeAnchor(i) {
-      const p = this._pose(), e = EYE[i], r = rot(e.x, e.y, p.psi);
+      const p = this._pose(), f = this.p.face3q, ex = lerp(EYE[i].x, EYE3[i].x, f), ey = lerp(EYE[i].y, EYE3[i].y, f);
+      const r = rot(ex * this.p.headSc, ey * this.p.headSc, p.psi);
       return [p.hc[0] + r[0], p.hc[1] + r[1]];
     }
 
@@ -214,6 +301,22 @@
 
       // Arm targets: hang and swing, raise, wave, or aim.
       const p = this._pose();
+      // Pointing: he lifts his head (and draws it back) until his jaw clears the line from the shoulder to the target,
+      // with room for the arm, so the arm passes under his chin (the head hangs in front of the shoulder, and the arm
+      // can't reach round it).
+      let lift = 0;
+      if (this._aim) {
+        const tg = this._toLocal(this._aim[0], this._aim[1]), sh = p.arms[1].sh, dx = tg[0] - sh[0];
+        if (dx > 0.5) {
+          for (const [jx, jy] of JAW) {
+            const j = rot(jx * P.headSc, jy * P.headSc, p.psi), x = p.hc[0] + j[0] + 0.4 * this._headLift, y = p.hc[1] + j[1] - this._headLift;
+            lift = Math.max(lift, sh[1] + ((x - sh[0]) * (tg[1] - sh[1])) / dx + 0.6 - y);
+          }
+          lift = Math.min(lift, 3.5);
+        }
+      }
+      this._liftT = lift;
+      this._headLift += (lift - this._headLift) * Math.min(1, dt * 9);   // (quicker than the arm, so the head leads)
       for (let i = 0; i < 2; i++) {
         const raise = i ? P.armRaiseN : P.armRaiseF;
         const swing = -0.55 * g * Math.sin(TAU * (this._phi + 0.5 * i)) * P.armHang;
@@ -225,15 +328,22 @@
           a = lerp(a, 2.95 + 0.2 * Math.sin(TAU * 1.8 * t), w);
           e = lerp(e, 0.5 + 0.5 * Math.sin(TAU * 1.8 * t + 1), w);
         }
+        if (P.pull > 0.01) {
+          // gripping the rope: both wrists go to fixed places in front of and below the head
+          // (walking, he pulls hand over hand in time with his steps)
+          const pump = 0.3 * g * Math.sin(TAU * (this._phi + 0.5 * i));
+          const q = this._solveArm(p.arms[i].sh, [p.hc[0] + PULL_HANDS[i][0] + 0.3 * pump, p.hc[1] + PULL_HANDS[i][1] + pump], P.armLen);
+          a = lerp(a, q.a, clamp(P.pull, 0, 1)); e = lerp(e, q.e, clamp(P.pull, 0, 1));
+        }
         if (i === 1) {
           // Hand to the chin / scratching the head / pointing at a scene point: solve the arm for a target.
-          const face = (lx, ly) => { const r = rot(lx, ly, p.psi); return [p.hc[0] + r[0], p.hc[1] + r[1]]; };
+          const face = (lx, ly) => { const r = rot(lx * P.headSc, ly * P.headSc, p.psi); return [p.hc[0] + r[0], p.hc[1] + r[1]]; };
           const goals = [];
           if (this._aim) goals.push([1, this._toLocal(this._aim[0], this._aim[1])]);
-          if (P.handChin > 0.01) goals.push([P.handChin, face(0.95, -1.0)]);
-          if (P.handHead > 0.01) goals.push([P.handHead, face(-1.0, 0.35)]);   // the back of the head
+          if (P.handChin > 0.01) goals.push([P.handChin, face(0.7, -2.35)]);   // under the chin
+          if (P.handHead > 0.01) goals.push([P.handHead, face(-1.2, 0.5)]);    // the back of the head
           for (const [wgt, tgt] of goals) {
-            const q = this._solveArm(p.arms[1].sh, tgt);
+            const q = this._solveArm(p.arms[1].sh, tgt, P.armLen);
             a = lerp(a, q.a, clamp(wgt, 0, 1)); e = lerp(e, q.e, clamp(wgt, 0, 1));
           }
         }
@@ -255,8 +365,8 @@
     }
 
     // Analytic two-bone solve: arm angle (from hanging) and elbow flex that put the wrist at tgt (rig units).
-    _solveArm(sh, tgt) {
-      const L1 = G.upperArm, L2 = G.foreArm;
+    _solveArm(sh, tgt, k = 1) {
+      const L1 = G.upperArm * k, L2 = G.foreArm * k;
       const vx = tgt[0] - sh[0], vy = tgt[1] - sh[1], m = Math.hypot(vx, vy) || 1e-3, d = Math.min(m, L1 + L2 - 0.02);
       const phi = Math.atan2(vy, vx), al = Math.acos(clamp((L1 * L1 + d * d - L2 * L2) / (2 * L1 * d), -1, 1));
       const cand = [phi + al, phi - al].map((th) => [sh[0] + L1 * Math.cos(th), sh[1] + L1 * Math.sin(th)]);
@@ -285,7 +395,9 @@
         const A = this._Ar[i], AT = this._armT[i];
         // stiffer while crouching / pushing off, so the arms swing back and whip forward in time with the legs
         const stiff = this._winding != null || this._push || this._swingT > 0 ? 1 : 0;
-        A.v += h * (-(32 + 230 * stiff) * (A.a - AT.a) - (3 + 14 * stiff) * A.v - T.v * 1.5 - aL * 0.03);
+        // (a pointing arm is critically damped: an overshoot would swing it up across the face)
+        const aimD = i === 1 && this._aim ? 8.5 : 0;
+        A.v += h * (-(32 + 230 * stiff) * (A.a - AT.a) - (3 + 14 * stiff + aimD) * A.v - T.v * 1.5 - aL * 0.03);
         A.a = clamp(A.a + h * A.v, -1.2, 3.3);
         A.ev += h * (-45 * (A.e - AT.e) - 4 * A.ev);
         A.e = clamp(A.e + h * A.ev, -0.2, 2.4);
@@ -311,25 +423,37 @@
     _pose() {
       const P = this.p, t = this.t, g = this._gaitAmt, phi = this._phi;
       const cr = clamp(this._C.c, 0, 1.15);
+      const th = G.thigh * P.legLen, sn = G.shin * P.legLen, legLen = th + sn, torsoL = G.torso * P.torsoLen;
       const lean = G.baseLean + P.slump * 0.32 + this._T.r + 0.012 * Math.sin(TAU * 0.25 * t) + 0.5 * P.sway * Math.sin(TAU * this._swayPh) + 0.32 * cr;
 
       // Legs, relative to the hip, then the pelvis is dropped so the lower foot just touches the ground.
       // The foot's horizontal position is driven directly: it moves back at exactly the body's speed while planted
       // (so it doesn't slide) and swings forward in an arc, then the hip angle is solved to put the ankle there.
+      // A set stance (P.stance) gives way to the gait as he starts walking; what is left of it is a crouch: the steps
+      // keep the stance's hip height (hipH) and are centred where its feet were.
+      const stC = clamp(P.stance, 0, 1), stW = stC * (1 - smooth(clamp(g / 0.45, 0, 1)));
       const legs = [0, 1].map((i) => {
         const u = (((phi + 0.5 * i) % 1) + 1) % 1, swing = Math.cos(TAU * u);
         const hx = G.reach * g;
         const fx = (u >= 0.25 && u < 0.75 ? hx * (1 - 4 * (u - 0.25)) : -hx * Math.cos(Math.PI * (((u - 0.75 + 1) % 1) / 0.5)))
-          + (i ? 0.35 : -0.35) * (1 - g) + 0.2;
-        const kb = G.kneeFlex + G.swingFlex * g * Math.max(0, swing) * (1 - cr) + 1.75 * cr;   // crouch: deep knee bend, both legs
+          + (i ? 0.35 : -0.35) * (1 - g) + lerp(0.2, (P.footB + P.footF) / 2, stC);
+        let kb = G.kneeFlex + G.swingFlex * g * Math.max(0, swing) * (1 - cr) + 1.75 * cr;   // crouch: deep knee bend, both legs
         const fa = 0.4 * g * Math.max(0, swing);              // toe lifts while the leg swings through
-        let t1 = kb * 0.5 + Math.asin(clamp(fx / LEG_LEN, -0.9, 0.9));
+        let fxx = fx;
+        if (stC > 0.001) {
+          // crouched: the ankle goes to (x, -hipH), lifted in an arc while the leg swings through, and the knee bend
+          // follows from the leg length; x is the set stance's foot when standing, the step when walking
+          const sx = i ? P.footF : P.footB, x = lerp(fx, sx, stW), y = P.hipH - 0.55 * g * Math.max(0, swing) * (1 - stW);
+          const kbS = Math.acos(clamp((x * x + y * y - th * th - sn * sn) / (2 * th * sn), -1, 1));
+          fxx = lerp(fx, x, stC); kb = lerp(kb, kbS, stC);
+        }
+        let t1 = kb * 0.5 + Math.asin(clamp(fxx / legLen, -0.9, 0.9));
         for (let n = 0; n < 8; n++) {
-          const f = G.thigh * Math.sin(t1) + G.shin * Math.sin(t1 - kb) - fx, d = G.thigh * Math.cos(t1) + G.shin * Math.cos(t1 - kb);
+          const f = th * Math.sin(t1) + sn * Math.sin(t1 - kb) - fxx, d = th * Math.cos(t1) + sn * Math.cos(t1 - kb);
           t1 -= f / (d || 1);
         }
-        const k = [G.thigh * Math.sin(t1), -G.thigh * Math.cos(t1)], t2 = t1 - kb;
-        const a = [k[0] + G.shin * Math.sin(t2), k[1] - G.shin * Math.cos(t2)];
+        const k = [th * Math.sin(t1), -th * Math.cos(t1)], t2 = t1 - kb;
+        const a = [k[0] + sn * Math.sin(t2), k[1] - sn * Math.cos(t2)];
         let low = Infinity;
         for (const [px, py] of SHOE_CORNERS) low = Math.min(low, a[1] + px * Math.sin(fa) + py * Math.cos(fa));
         return { k, a, fa, low };
@@ -339,25 +463,32 @@
 
       // Torso: a stooped spine with a hump on the back.
       const d = [Math.sin(lean), Math.cos(lean)], n = [-Math.cos(lean), Math.sin(lean)];
-      const spineAt = (u) => [hip[0] + G.torso * u * d[0] + G.hump * Math.sin(Math.PI * u) * n[0], hip[1] + G.torso * u * d[1] + G.hump * Math.sin(Math.PI * u) * n[1]];
+      const hump = G.hump * P.humpK;
+      const spineAt = (u) => [hip[0] + torsoL * u * d[0] + hump * Math.sin(Math.PI * u) * n[0], hip[1] + torsoL * u * d[1] + hump * Math.sin(Math.PI * u) * n[1]];
       const spine = []; for (let k = 0; k <= 12; k++) spine.push(spineAt(k / 12));
-      const S = spine[12], shoulder = spineAt(0.92);
+      const S = spine[12], sp0 = spineAt(P.shU), shoulder = [sp0[0] - P.shFwd * n[0], sp0[1] - P.shFwd * n[1]];   // shFwd moves the shoulder joint out toward the front of the torso
 
       // Neck and head: the head hangs forward and drops with the mood.
       const nl = lean * 0.7 + 0.25, N = [S[0] + G.neck * Math.sin(nl), S[1] + G.neck * Math.cos(nl)];
       const bob = 0.5 * this.opts.drift * P.bob * Math.sin(TAU * this._bobPh);
-      const psi = -0.2 - P.headDrop * 0.45 + this._Hd.r - P.headTilt * 0.3 - P.tilt + this._lookPitch * 0.5;
-      const hoff = rot(0.2, 1.05 + bob * 0.2, psi), hc = [N[0] + hoff[0], N[1] + hoff[1] + bob * 0.2];
+      let psi = -0.2 - P.headDrop * 0.45 + this._Hd.r - P.headTilt * 0.3 - P.tilt + this._lookPitch * 0.5;
+      // (the head hangs well away from the neck's top, so it swings about it by less than it pitches, keeping the
+      // distance it moves about what a head on a short neck would)
+      const ho = [0.2 + P.headDx, 1.05 + P.headDy + bob * 0.2], hk = 1.07 / Math.max(1.07, Math.hypot(ho[0], ho[1]));
+      const hoff = rot(ho[0], ho[1], -0.2 + (psi + 0.2) * hk);
+      // (lifted to point, the head also comes back a little and tips up, looking along the arm)
+      const hl = this._headLift, hc = [N[0] + hoff[0] - 0.4 * hl, N[1] + hoff[1] + bob * 0.2 + hl];
+      psi += 0.12 * hl;
 
       // Arms.
       const arms = [0, 1].map((i) => {
         const A = this._Ar[i], sh = [shoulder[0] + (i ? 0.08 : -0.12), shoulder[1] + (i ? -0.05 : 0.05)];
-        const u1 = [Math.sin(A.a), -Math.cos(A.a)], el = [sh[0] + G.upperArm * u1[0], sh[1] + G.upperArm * u1[1]];
+        const u1 = [Math.sin(A.a), -Math.cos(A.a)], el = [sh[0] + G.upperArm * P.armLen * u1[0], sh[1] + G.upperArm * P.armLen * u1[1]];
         const a2 = A.a + A.e, u2 = [Math.sin(a2), -Math.cos(a2)];
-        const wr = [el[0] + G.foreArm * u2[0], el[1] + G.foreArm * u2[1]];
+        const wr = [el[0] + G.foreArm * P.armLen * u2[0], el[1] + G.foreArm * P.armLen * u2[1]];
         return { sh, el, wr, hand: [wr[0] + 0.34 * u2[0], wr[1] + 0.34 * u2[1]], a2 };
       });
-      return { lean, legs: L, hip, spine, S, shoulder, N, hc, psi, arms };
+      return { lean, legs: L, hip, spine, S, shoulder, N, hc, psi, arms, torsoL };
     }
 
     // ------------------------------------------------------------- drawing
@@ -379,14 +510,21 @@
       ctx.rotate(jig);
       ctx.scale(fxs, 1);
 
+      if (P.pull > 0.5) this._drawRope(ctx, pose);
       this._drawArm(ctx, pose, 0);
       this._drawLeg(ctx, pose, 0);
       this._drawHairBack(ctx, pose);
       this._drawLeg(ctx, pose, 1);   // the near leg goes under the torso, so the shirt hangs over the top of the thigh
+      this._drawNeck(ctx, pose);     // the long neck is under the shirt
       this._drawTorso(ctx, pose);
-      this._drawNeck(ctx, pose);
+      // The near upper arm passes behind the slung head and the forearm comes out in front of it, unless the hand is up
+      // at the face or higher (raised, or at the back of his head), when the whole arm goes behind.  A pointing arm
+      // comes out in front once he has lifted his head for it to pass under his chin.
+      const w = pose.arms[1].wr, wl = rot(w[0] - pose.hc[0], w[1] - pose.hc[1], -pose.psi)[1] / P.headSc;
+      const behind = P.pull < 0.5 && wl > -1.7 && !(this._aim && this._headLift >= 0.85 * this._liftT);
+      this._drawArm(ctx, pose, 1, behind ? 'all' : 'upper');
       this._drawHead(ctx, pose);
-      this._drawArm(ctx, pose, 1);
+      if (!behind) this._drawArm(ctx, pose, 1, 'lower');
       ctx.restore();
 
       ctx.save();
@@ -410,8 +548,8 @@
     }
 
     _drawTorso(ctx, pose) {
-      const sp = pose.spine, seg = G.torso / 12;
-      const shirtW = (u) => 1.5 + 0.85 * Math.sin(Math.PI * clamp(u * 0.8 + 0.1, 0, 1));   // u along the whole spine, 0..1
+      const sp = pose.spine, seg = pose.torsoL / 12;
+      const shirtW = (u) => this.p.torsoW * (1.5 + 0.85 * Math.sin(Math.PI * clamp(u * 0.8 + 0.1, 0, 1)));   // u along the whole spine, 0..1
 
       // 1. Trousers: a hips block and a black section up the lower torso (drawn first, the shirt hangs over it).
       //    It starts a little below the spine and its lower end is rounded (a quarter ellipse over the extension),
@@ -425,13 +563,19 @@
         (u) => pw(u) * (u < r ? Math.sqrt(Math.max(0, 1 - Math.pow((r - u) / r, 2))) * 0.94 + 0.06 : 1), false), 'waist', PAL.pants);
 
       // 2. The shirt goes over the trousers and hangs right down over the hips: the hem is a little below the bottom of
-      //    the spine, so only the seat and legs show as black.  Flat hem; round shoulders from a circle at the top.
+      //    the spine, so only the seat and legs show as black.  It is one solid mass: the convex hull of the humped
+      //    torso (flat hem), a round cap on the shoulders at the top, and the round chest at the shoulder joint that
+      //    fills the space between the hump and the slung head.
       const hemExt = 0.3;
       const hs = [sp[0][0] - (d0[0] / dl) * hemExt, sp[0][1] - (d0[1] / dl) * hemExt];
       const SL = 12 * seg + hemExt;
-      this._shape(ctx, ribbon(densify([hs, ...sp], 0.1, false), (u) => shirtW(Math.max(0, u * SL - hemExt) / seg / 12), false), 'torso', PAL.shirt);
-      const top = sp[12];
-      this._shape(ctx, circle(top[0], top[1], shirtW(1) / 2, 32), 'shoulders', PAL.shirt, false);
+      const top = sp[12], c = pose.shoulder;
+      const body = hull([
+        ...ribbon(densify([hs, ...sp], 0.1, false), (u) => shirtW(Math.max(0, u * SL - hemExt) / seg / 12), false),
+        ...circle(top[0], top[1], shirtW(1) / 2, 32),
+        ...circle(c[0], c[1], 0.62 * shirtW(0.5), 32),
+      ]);
+      this._shape(ctx, densify(body, 0.1), 'torso', PAL.shirt);
 
       // 3. A fold of shade down the back of the shirt to give the hump some depth.
       const back = sp.map((p, k) => [p[0] - 0.42 * Math.sin(Math.PI * Math.min(1, k / 12 * 0.9 + 0.05)), p[1]]);
@@ -439,34 +583,70 @@
     }
 
     _drawNeck(ctx, pose) {
-      this._shape(ctx, bone(pose.S, pose.N, 0.86, 0.7), 'neck', PAL.skinShade);
+      // the head is slung far forward of the shoulders, so the neck runs from the shoulders to the head centre
+      this._shape(ctx, bone(pose.shoulder, pose.hc, 0.9, 0.8), 'neck', PAL.skinShade);
     }
 
-    _drawArm(ctx, pose, i) {
+    // part: 'all', or 'upper' (shoulder to elbow) / 'lower' (forearm and hand) when the head has to go between them
+    _drawArm(ctx, pose, i, part = 'all') {
       const a = pose.arms[i], far = i === 0;
       const sleeve = far ? PAL.shirtShade : PAL.shirt, skin = far ? PAL.skinShade : PAL.skin;
+      const up = part !== 'lower', low = part !== 'upper';
       if (!far) {
         const o = (p) => [p[0] - 0.09, p[1] - 0.09];
-        this._shape(ctx, bone(o(a.sh), o(a.el), 0.95, 0.8), 'upperS', PAL.shirtShade, false);
-        this._shape(ctx, bone(o(a.el), o(a.wr), 0.78, 0.68), 'foreS', PAL.shirtShade, false);
+        if (up) this._shape(ctx, bone(o(a.sh), o(a.el), 0.95, 0.8), 'upperS', PAL.shirtShade, false);
+        if (low) this._shape(ctx, bone(o(a.el), o(a.wr), 0.78, 0.68), 'foreS', PAL.shirtShade, false);
       }
-      this._shape(ctx, bone(a.sh, a.el, 0.95, 0.8), `upper${i}`, sleeve);
-      this._shape(ctx, circle(a.el[0], a.el[1], 0.42, 18), `elbow${i}`, sleeve, false);
+      if (up) {
+        this._shape(ctx, bone(a.sh, a.el, 0.95, 0.8), `upper${i}`, sleeve);
+        this._shape(ctx, circle(a.el[0], a.el[1], 0.42, 18), `elbow${i}`, sleeve, false);
+      }
+      if (!low) return;
       this._shape(ctx, bone(a.el, a.wr, 0.78, 0.68), `fore${i}`, sleeve);
-      const ang = a.a2 - Math.PI / 2;   // the hand lies along the forearm
-      this._shape(ctx, ellipse(0, 0, G.handR * 0.95, G.handR * 0.75, 24).map((p) => {
-        const r = rot(p[0], p[1], ang);
-        return [a.hand[0] + r[0], a.hand[1] + r[1]];
-      }), `hand${i}`, skin);
+      this._drawHand(ctx, a, i, skin, far ? PAL.earIn : PAL.skinShade);
+    }
+
+    // A classic cartoon hand: a mitten palm, three fat fingers and a thumb.  Hand-local frame: +x runs on from the
+    // forearm, +y is the thumb side.  Open (relaxed, fingers a little spread) it blends into a fist (P.pull) with the
+    // fingers curled into a stack of knuckles and the thumb clamped over them.  Each finger is laid over a slightly
+    // larger dark copy, which is what separates the fingers without outlines.
+    _drawHand(ctx, a, i, skin, dark) {
+      const grip = clamp(this.p.pull, 0, 1), ang = a.a2 - Math.PI / 2, s = G.handR / 0.62;
+      const X = (pts) => pts.map((p) => { const r = rot(p[0] * s, p[1] * s, ang); return [a.hand[0] + r[0], a.hand[1] + r[1]]; });
+      const L = (p, q) => [lerp(p[0], q[0], grip), lerp(p[1], q[1], grip)];
+      const digit = (p0, p1, w, id) => {
+        this._shape(ctx, X(ribbon(densify([p0, p1], 0.05, false), w + 0.06)), id + 'S', dark, false);
+        this._shape(ctx, X(ribbon(densify([p0, p1], 0.05, false), w)), id, skin, false);
+      };
+      this._shape(ctx, X(ellipse(lerp(-0.06, -0.04, grip), 0.02, lerp(0.4, 0.36, grip), lerp(0.34, 0.4, grip), 24)), `hand${i}`, skin);
+      // fingers, index (thumb side) to little
+      for (let k = 0; k < 3; k++) {
+        const y = 0.2 - 0.21 * k;
+        digit(L([0.18, y], [0.18, y + 0.02]), L([0.64 - 0.05 * k, y * 1.25 - 0.04], [0.4, y + 0.02]), lerp(0.2, 0.23, grip), `finger${i}${k}`);
+      }
+      digit(L([-0.05, 0.22], [-0.02, 0.3]), L([0.28, 0.5], [0.38, 0.36]), lerp(0.2, 0.21, grip), `thumb${i}`);
+    }
+
+    // The rope he hauls on: it runs through both fists, a little above the top one and hanging well below the bottom one.
+    _drawRope(ctx, pose) {
+      const h0 = pose.arms[0].hand, h1 = pose.arms[1].hand;
+      const pts = [[h0[0] - 0.05, h0[1] + 1.2], h0, h1, [h1[0] + 0.2, Math.max(1.0, h1[1] - 4.6)]];
+      this._shape(ctx, ribbon(densify(pts, 0.1, false), 0.13), 'rope', PAL.rope);
+      for (let k = 0; k < 9; k++) {
+        const y = pts[3][1] + 0.35 + 0.45 * k;
+        if (y > pts[2][1] - 0.4) break;
+        this._shape(ctx, ribbon([[pts[3][0] - 0.1, y], [pts[3][0] + 0.1, y + 0.13]], 0.035), 'twist' + k, PAL.ropeDark, false);
+      }
     }
 
     _drawHairBack(ctx, pose) {
       ctx.save();
       ctx.translate(pose.hc[0], pose.hc[1]);
       ctx.rotate(pose.psi);
+      ctx.scale(this.p.headSc, this.p.headSc);
       const sway = 0.05 * Math.sin(TAU * 0.4 * this.t);
       for (let k = 0; k < 6; k++) {
-        const y0 = 0.6 - k * 0.34, ex = -2.15 - 0.1 * (k % 2) + sway * k, ey = y0 - 0.6 - 0.12 * k;
+        const y0 = 0.9 - k * 0.2, ex = -1.75 - 0.08 * (k % 2) + sway * k, ey = y0 - 0.35 - 0.08 * k;
         this._shape(ctx, ribbon([[-1.05, y0], [(-1.05 + ex) / 2, y0 - 0.15], [ex, ey]], (u) => 0.2 * (1 - 0.8 * u)), `hair${k}`, PAL.hair, false);
       }
       ctx.restore();
@@ -477,10 +657,41 @@
       ctx.save();
       ctx.translate(hc[0], hc[1]);
       ctx.rotate(pose.psi);
-      // skull and jaw, with a darker hollow under the cheekbone running down toward the jaw (no ear is drawn)
-      this._shape(ctx, HEAD, 'head', PAL.skin);
-      this._shape(ctx, ribbon(densify([[0.12, 0.05], [-0.18, -0.3], [-0.36, -0.72], [-0.32, -1.12]], 0.06, false), (u) => 0.46 * Math.sin(Math.PI * (0.1 + 0.8 * u)) + 0.03), 'cheek', PAL.skinShade, false);
+      ctx.scale(P.headSc, P.headSc);
+      // the ear, at the back edge of the head under the cap: a tall oval with a darker hollow (drawn before the skull so
+      // only the rim shows outside it)
+      const ey = 0.02 + 0.8 * P.face3q;
+      this._shape(ctx, ellipse(-1.48, ey, 0.36, 0.68, 24).map(([x, y]) => { const r = rot(x + 1.48, y - ey, -0.15); return [-1.48 + r[0], ey + r[1]]; }), 'ear', PAL.ear);
+      this._shape(ctx, ellipse(-1.5, ey - 0.02, 0.15, 0.4, 16), 'earIn', PAL.earIn, false);
+      // skull and jaw, with a darker hollow under the cheekbone running down toward the jaw
+      const f3 = P.face3q;
+      this._shape(ctx, headOutline(f3), 'head', PAL.skin);
+      // with the cap pushed up to the top of the skull the forehead needs filling in under the brim
+      if (P.capUp > 0.05) this._shape(ctx, densify([[-1.5, 0.1], [1.52, 0.1], [1.5, 0.9 + P.capUp], [-1.55, 0.9 + P.capUp]], 0.1), 'brow', PAL.skin);
+      if (f3 > 0.5) {
+        // front-on: the pale muzzle, and the hollow under the near cheekbone edged by a dark line
+        // (moved down so its lower edge nearly touches the top lip, wherever the expression puts it; the resting mouth,
+        // not the chewing one, so it doesn't bob)
+        const lip = this._lips(P.open).top, n = lip.length - 1;
+        const lipY = (x) => {
+          let i = 0;
+          while (i < n - 1 && lip[i + 1][0] < x) i++;
+          return lerp(lip[i][1], lip[i + 1][1], clamp((x - lip[i][0]) / ((lip[i + 1][0] - lip[i][0]) || 1), 0, 1));
+        };
+        let gap = Infinity;
+        for (const [x, y] of NOSE_HI) if (y < -0.7 && x > lip[0][0] && x < lip[n][0]) gap = Math.min(gap, y - lipY(x));
+        const dy = gap === Infinity ? 0 : clamp(gap - 0.05, -0.1, 0.8);
+        this._shape(ctx, densify(NOSE_HI.map(([x, y]) => [x, y - dy]), 0.08), 'noseHi', PAL.noseHi, false);
+        this._shape(ctx, densify(CHEEK_HOLLOW, 0.08), 'cheek', PAL.skinShade, false);
+        this._shape(ctx, ribbon(densify(CHEEK_LINE, 0.05, false), (u) => 0.065 * Math.pow(Math.sin(Math.PI * (0.04 + 0.92 * u)), 0.5)), 'cheekLine', PAL.line, false);
+      } else {
+        this._shape(ctx, ribbon(densify([[0.12, 0.05], [-0.18, -0.3], [-0.36, -0.72], [-0.32, -1.12]], 0.06, false), (u) => 0.46 * Math.sin(Math.PI * (0.1 + 0.8 * u)) + 0.03), 'cheek', PAL.skinShade, false);
+      }
+      // forehead wrinkles (the cap covers them unless it is pushed up), the last pair being the frown between the eyes
+      BROW_LINES.forEach((l, k) => this._shape(ctx, ribbon(densify(l, 0.05, false), (u) => 0.042 * Math.sin(Math.PI * (0.05 + 0.9 * u))), 'wrinkle' + k, PAL.crease, false));
       // dark bangs hanging from under the brim, and strands at the temple
+      ctx.save();
+      ctx.translate(0, P.capUp);
       for (let k = 0; k < 6; k++) {
         const bx = -0.6 + 0.4 * k, len = 0.2 + 0.07 * ((k * 5) % 3), sw = 0.03 * Math.sin(TAU * 0.4 * this.t + k);
         this._shape(ctx, ribbon([[bx, 0.55], [bx + 0.02, 0.45 - len * 0.4], [bx + 0.04 + sw, 0.5 - len]], (u) => 0.13 * (1 - 0.75 * u)), `bang${k}`, PAL.hair, false);
@@ -490,16 +701,21 @@
         const x0 = -0.95 + 0.17 * k, len = 0.8 - 0.1 * k, sw = 0.03 * Math.sin(TAU * 0.4 * this.t + 2 * k);
         this._shape(ctx, ribbon([[x0, 0.55], [x0 - 0.06 + sw, 0.55 - len * 0.55], [x0 + 0.05 + sw, 0.55 - len]], (u) => 0.16 * (1 - 0.7 * u)), `temple${k}`, PAL.hair, false);
       }
+      ctx.restore();
       this._drawEyes(ctx);
-      // two small dark nostrils under the tip of the nose (a slanted pair, as in the sketch)
+      // two small dark nostrils under the tip of the nose, drawn as tapering ticks: the front one nearly upright, the
+      // back one slanting back and down (as in the sketch)
       for (let k = 0; k < 2; k++) {
-        this._shape(ctx, ellipse(1.4 - 0.2 * k, -0.34 - 0.02 * k, 0.05, 0.095, 14).map(([x, y]) => { const r = rot(x - (1.4 - 0.2 * k), y - (-0.34 - 0.02 * k), -0.45); return [1.4 - 0.2 * k + r[0], -0.34 - 0.02 * k + r[1]]; }), `nostril${k}`, PAL.nostril, false);
+        const nx = lerp(1.4, NOSE3.x, f3) - lerp(0.2, 0.18, f3) * k, ny = lerp(-0.34, NOSE3.y, f3) - 0.02 * k;
+        const d = k ? [lerp(-0.07, -0.11, f3), lerp(-0.14, -0.12, f3)] : [lerp(-0.07, 0.03, f3), lerp(-0.14, -0.17, f3)];
+        this._shape(ctx, ribbon([[nx, ny], [nx + d[0] / 2, ny + d[1] / 2], [nx + d[0], ny + d[1]]], (u) => 0.075 * (1 - 0.6 * u)), `nostril${k}`, PAL.nostril, false);
       }
       this._drawMouth(ctx);
       // cap (wobbles a little on the head)
       ctx.save();
-      ctx.translate(0, 0.45);
+      ctx.translate(0, 0.45 + P.capUp);
       ctx.rotate(this._Cp.r);
+      ctx.scale(1, P.capH);
       ctx.translate(0, -0.45);
       this._drawCap(ctx);
       ctx.restore();
@@ -524,16 +740,17 @@
       // brim
       // brim: thickest where it meets the crown, tapering to a near point at the front (no rounded end cap)
       this._shape(ctx, ribbon(densify([[0.45, base + 0.03], [1.3, base - 0.04], [2.3, base - 0.17]], 0.08, false), (u) => 0.03 + 0.31 * Math.pow(1 - u, 0.85), false), 'brim', PAL.brim);
-      // the brain: a small pink lump with a cream highlight, folds and a drip, left of centre on the front panel
+      // the brain: pink, with a cream highlight on the crown, three folds, and the brain stem hanging
+      // from the back of its underside; left of centre on the front panel
       ctx.save();
       ctx.translate(0.62, 1.32);
       ctx.rotate(-0.1);
       ctx.scale(0.95, 0.95);
       this._shape(ctx, EMBLEM, 'emblem', PAL.emblem, false);
-      this._shape(ctx, ellipse(-0.1, 0.1, 0.24, 0.15, 18), 'emblemHi', PAL.emblemHi, false);
+      this._shape(ctx, ellipse(0.26, 0.2, 0.13, 0.05, 16), 'emblemHi', PAL.emblemHi, false);
       EMBLEM_FOLDS.forEach((f, k) => this._shape(ctx, f, `fold${k}`, PAL.emblemDeep, false));
-      this._shape(ctx, ribbon([[0.3, -0.3], [0.32, -0.55]], (u) => 0.12 * (1 - 0.3 * u)), 'brainDrip', PAL.emblem, false);
-      this._shape(ctx, circle(0.32, -0.58, 0.07, 12), 'brainDrop', PAL.emblem, false);
+      this._shape(ctx, ribbon([[-0.14, -0.14], [-0.17, -0.28], [-0.23, -0.36]], (u) => 0.15 * (1 - 0.25 * u)), 'brainDrip', PAL.emblem, false);
+      this._shape(ctx, circle(-0.23, -0.37, 0.06, 12), 'brainDrop', PAL.emblem, false);
       ctx.restore();
     }
 
@@ -541,23 +758,35 @@
       const P = this.p;
       const blink = this._blinkT >= 0 ? Math.sin(Math.PI * clamp(this._blinkT / P.blinkDur, 0, 1)) : 0;
       for (const i of [1, 0]) {   // near eye first, far eye drawn over it
-        const side = i ? 1 : -1, e = EYE[i];
+        const side = i ? 1 : -1, e = Object.assign({}, EYE[i]), e3 = EYE3[i], f = P.face3q;
+        e.x = lerp(e.x, e3.x, f); e.y = lerp(e.y, e3.y, f); e.rx = lerp(e.rx, e3.rx, f); e.tilt = lerp(e.tilt, e3.tilt, f);
         const c0 = clamp(0.55 + P.lidUp - side * P.lidAsym, 0, 1), c = c0 + (1 - c0) * blink;
         const hh = lerp(0.25, 0.04, c) * P.eyeScale, rx = e.rx * P.eyeScale;
+        const top = hh * lerp(1, e3.top, f), bot = hh * lerp(0.6, e3.bot, f);
         ctx.save();
         ctx.translate(e.x, e.y);
-        ctx.rotate(-P.lidTilt * side * 0.3);
-        // plain white eyes: no pupils and no dark outline (the sketch draws them as blank white slits)
-        this._shape(ctx, ellipse(0, 0, rx, hh, 32), 'eye' + i, PAL.lid, false);
+        ctx.rotate(e.tilt - P.lidTilt * side * 0.3);
+        // wrinkles: a crease over the upper lid and two bags under the lower one, following the lids (they stay put when
+        // he blinks, so they use the open lid heights)
+        const T0 = lerp(0.25, 0.04, c0) * P.eyeScale * lerp(1, e3.top, f), B0 = lerp(0.25, 0.04, c0) * P.eyeScale * lerp(0.6, e3.bot, f);
+        const lidLine = (x0, x1, y, dir, h, w, id) => {
+          const pts = [];
+          for (let k = 0; k <= 12; k++) { const x = lerp(x0, x1, k / 12); pts.push([x, dir * (lidAt(rx * 1.15, h, x) + y)]); }
+          this._shape(ctx, ribbon(pts, (u) => w * Math.sin(Math.PI * (0.05 + 0.9 * u))), id, PAL.crease, false);
+        };
+        lidLine(-rx * 1.0, rx * 0.95, 0.09, 1, T0 + 0.05, 0.045, 'lidUp' + i);
+        lidLine(-rx * 0.85, rx * 0.6, 0.08, -1, B0 * 0.8, 0.04, 'bagA' + i);
+        lidLine(-rx * 0.6, rx * 0.35, 0.18, -1, B0 * 0.6, 0.032, 'bagB' + i);
+        // plain white almond eyes: no pupils and no dark outline (the sketch draws them as blank white slits)
+        this._shape(ctx, almond(rx, top, bot), 'eye' + i, PAL.lid, false);
         ctx.restore();
       }
     }
 
-    _drawMouth(ctx) {
-      const P = this.p, t = this.t;
-      let open = P.open;
-      if (this._chompT >= 0) open *= 0.5 + 0.5 * Math.cos(TAU * 3.3 * (this._chompT / 0.9));
-      const w = MOUTH.w * P.mouthW, top = [], bot = [], n = 24;
+    // The lips (head-local units), back to front, for a mouth opened by `open`: w is the half-width of the plain
+    // mouth, f how far it has become the sketch's gape.
+    _lips(open) {
+      const P = this.p, w = MOUTH.w * P.mouthW, top = [], bot = [], n = 24;
       for (let i = 0; i <= n; i++) {
         const u = -1 + (2 * i) / n, x = u * w, e = Math.sqrt(Math.max(0, 1 - Math.pow(u, 6)));
         let yc = P.curve * w * 0.55 * (u * u - 0.4);
@@ -568,26 +797,63 @@
         top.push([x, yc * (1 - 0.4 * open) + e * 0.02]);
         bot.push([x, yc - th]);
       }
-      ctx.save();
-      ctx.translate(MOUTH.x, MOUTH.y);
+      // Into head-local units (placed for the face design, face3q).  Opened wide, it becomes the sketch's gape: the
+      // blend (gw) starts at open 0.6 and is complete at 1.5, and the gape itself opens with `open` (1.6 is wide).
+      const fd = P.face3q, mx = lerp(MOUTH.x, MOUTH3.x, fd), my = lerp(MOUTH.y, MOUTH3.y, fd), mr = MOUTH.rot * fd;
+      const f = fd * smooth(clamp((open - 0.6) / 0.9, 0, 1)), g = clamp(open / 1.6, 0, 1.2);
+      for (let i = 0; i <= n; i++) {
+        const s = i / n, gt = along(GAPE_TOP, s), gb0 = along(GAPE_BOT, s), gb = [lerp(gt[0], gb0[0], g), lerp(gt[1], gb0[1], g)];
+        const a = rot(top[i][0], top[i][1], mr), b = rot(bot[i][0], bot[i][1], mr);
+        top[i] = [lerp(mx + a[0], gt[0], f), lerp(my + a[1], gt[1], f)];
+        bot[i] = [lerp(mx + b[0], gb[0], f), lerp(my + b[1], gb[1], f)];
+      }
+      return { w, top, bot, n, f };
+    }
+
+    _drawMouth(ctx) {
+      const P = this.p, t = this.t;
+      let open = P.open;
+      if (this._chompT >= 0) open *= 0.5 + 0.5 * Math.cos(TAU * 3.3 * (this._chompT / 0.9));
+      const { w, top, bot, n, f } = this._lips(open);
       this._shape(ctx, top.concat(bot.slice().reverse()), 'mouth', PAL.mouthIn, false);
+      // how far a point on the bottom lip is from the top lip
+      const room = (p) => Math.min(...top.map((q) => Math.hypot(q[0] - p[0], q[1] - p[1])));
+      // a point on the bottom lip at fractional index k
+      const botAt = (k) => {
+        const k0 = clamp(Math.floor(k), 0, n - 1), u = k - k0;
+        return [lerp(bot[k0][0], bot[k0 + 1][0], u), lerp(bot[k0][1], bot[k0 + 1][1], u)];
+      };
       if (open > 0.1) {
-        // teeth: upper row hangs from the top lip, a shorter lower row rises from the bottom lip
-        const gap = (k) => top[k][1] - bot[k][1];
-        for (let m = 0; m < 5; m++) {
-          const k = Math.round(n * (0.22 + 0.14 * m)), h = Math.min(0.2, gap(k) * 0.55), hw = w * 0.085;
-          this._shape(ctx, densify([[top[k][0] - hw, top[k][1]], [top[k][0] + hw, top[k][1]], [top[k][0] + hw * 0.9, top[k][1] - h], [top[k][0] - hw * 0.9, top[k][1] - h]], 0.05), 'tu' + m, PAL.teeth, false);
+        // the tongue: a red mound lying along the bottom of the mouth, toward the back, behind the teeth
+        const k0 = Math.round(n * lerp(0.2, 0.06, f)), k1 = Math.round(n * lerp(0.78, 0.6, f)), tg = [];
+        // (straight up from the bottom lip, toward the top lip above it)
+        const topY = (x) => {
+          let i = 0;
+          while (i < n - 1 && top[i + 1][0] < x) i++;
+          const u = clamp((x - top[i][0]) / ((top[i + 1][0] - top[i][0]) || 1), 0, 1);
+          return lerp(top[i][1], top[i + 1][1], u);
+        };
+        for (let k = k0; k <= k1; k++) {
+          const h = Math.min(lerp(0.2, 0.46, f), 0.8 * (topY(bot[k][0]) - bot[k][1])) * Math.pow(Math.sin(Math.PI * (k - k0) / (k1 - k0)), 0.45);
+          tg.push([bot[k][0], bot[k][1] + Math.max(0, h)]);
         }
+        for (let k = k1; k >= k0; k--) tg.push(bot[k]);
+        this._shape(ctx, tg, 'tongue', PAL.tongue, false);
+        const km = Math.round((k0 + 2 * k1) / 3), hh = Math.min(lerp(0.12, 0.36, f), 0.65 * (topY(bot[km][0]) - bot[km][1]));
+        this._shape(ctx, ellipse(bot[km][0], bot[km][1] + hh, lerp(0.07, 0.1, f), lerp(0.04, 0.04, f), 14), 'tongueHi', PAL.tongueHi, false);
+        // teeth: only a bottom row, big square ones rising from the lower lip with dark gaps between, a little uneven
         for (let m = 0; m < 4; m++) {
-          const k = Math.round(n * (0.29 + 0.14 * m)), h = Math.min(0.16, gap(k) * 0.45), hw = w * 0.08;
-          this._shape(ctx, densify([[bot[k][0] - hw, bot[k][1]], [bot[k][0] + hw, bot[k][1]], [bot[k][0] + hw * 0.9, bot[k][1] + h], [bot[k][0] - hw * 0.9, bot[k][1] + h]], 0.05), 'tl' + m, PAL.teeth, false);
+          const k = n * lerp(0.29 + 0.14 * m, 0.205 + 0.1 * m, f), p = botAt(k), nm = [0, 1], tn = [1, 0];
+          const h = Math.min(lerp(0.16, 0.3, f) * (1 - 0.08 * ((m * 7) % 3)), 0.6 * room(p)), hw = lerp(w * 0.08, 0.082, f);
+          const at = (u, v) => [p[0] + tn[0] * u + nm[0] * v, p[1] + tn[1] * u + nm[1] * v];
+          this._shape(ctx, densify([at(-hw, -0.02), at(hw, -0.02), at(hw * 0.95, h), at(-hw * 0.95, h * (0.9 + 0.05 * (m % 2)))], 0.05), 'tl' + m, PAL.teeth, false);
         }
       }
-      // a smear of blood at the corner of the mouth, dripping
-      const k = Math.round(n * 0.86), dx = bot[k][0], dy = bot[k][1], len = 0.3 + 0.35 * open + 0.03 * Math.sin(TAU * 0.5 * t);
-      this._shape(ctx, ribbon([[dx, dy + 0.02], [dx + 0.02, dy - len]], (u) => 0.13 * (1 - 0.5 * u)), 'blood', PAL.blood, false);
-      this._shape(ctx, circle(dx + 0.02, dy - len - 0.02, 0.085, 14), 'drop', PAL.blood, false);
-      ctx.restore();
+      // blood: smeared along the lower lip under the teeth and dripping off it
+      if (f > 0.5) this._shape(ctx, ribbon(bot.slice(Math.round(n * 0.18), Math.round(n * 0.62) + 1), (u) => 0.065 * Math.sin(Math.PI * (0.05 + 0.9 * u))), 'bloodLip', PAL.blood, false);
+      const k = Math.round(n * lerp(0.86, 0.4, f)), dx = bot[k][0], dy = bot[k][1], len = lerp(0.3 + 0.35 * open, 0.12 + 0.08 * open, f) + 0.03 * Math.sin(TAU * 0.5 * t);
+      this._shape(ctx, ribbon([[dx, dy + 0.02], [dx + 0.02, dy - len]], (u) => lerp(0.13, 0.09, f) * (1 - 0.5 * u)), 'blood', PAL.blood, false);
+      this._shape(ctx, circle(dx + 0.02, dy - len - 0.02, lerp(0.085, 0.06, f), 14), 'drop', PAL.blood, false);
     }
   }
 
