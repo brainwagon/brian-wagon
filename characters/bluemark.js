@@ -20,17 +20,17 @@
     skin: col('#5AA0D8'), skinShade: col('#3F7FB8'), skinHi: col('#86BDE8'),
     shirt: col('#F4F1EA'), shirtShade: col('#D3CEC1'),
     pants: col('#1E1E27'), pantsShade: col('#14141B'), shoe: col('#0E0E13'),
-    cap: col('#F8F6F0'), capShade: col('#D9D4C7'), brim: col('#EAE6DB'),
-    emblem: col('#EF6F9C'), emblemDeep: col('#C4457A'),
+    cap: col('#F4F2EC'), capShade: col('#CFC9BE'), capPanel: col('#FBFAF6'), brim: col('#E3DFD4'),
+    emblem: col('#EE8FA8'), emblemDeep: col('#B8456F'), emblemHi: col('#F7CDB8'),
     blood: col('#A8252B'), hair: col('#20222B'),
-    lid: col('#F4F1EA'), lash: col('#1B2B3A'), teeth: col('#F1E8C8'), mouthIn: col('#3A1518'),
+    lid: col('#F4F1EA'), lash: col('#1B2B3A'), nostril: col('#1B2033'), teeth: col('#F1E8C8'), mouthIn: col('#3A1518'),
   });
 
   const G = {
     thigh: 2.1, shin: 2.05, ankle: 0.28,
     torso: 2.7, hump: 0.55, neck: 0.5,
     upperArm: 2.0, foreArm: 2.0, handR: 0.62,
-    headRx: 1.5, headRy: 1.58,
+    headRx: 1.5, headRy: 1.58,   // (nominal; the head is the HEAD outline)
     pelvisX: -1.0,
     baseLean: 47 * DEG,        // forward stoop of the torso from vertical
     kneeFlex: 0.2, swingFlex: 0.75,
@@ -45,6 +45,23 @@
   const SHOE_CORNERS = [[-0.42, 0.14], [-0.44, -0.26], [0.8, -0.26], [1.12, -0.14], [1.14, 0.06], [0.55, 0.2]];
   const SHOE = densify(SHOE_CORNERS, 0.1);
 
+  // Closed Catmull-Rom curve through pts, `n` samples per segment.
+  function spline(pts, n = 6) {
+    const out = [], m = pts.length;
+    for (let i = 0; i < m; i++) {
+      const p0 = pts[(i - 1 + m) % m], p1 = pts[i], p2 = pts[(i + 1) % m], p3 = pts[(i + 2) % m];
+      for (let k = 0; k < n; k++) {
+        const t = k / n, t2 = t * t, t3 = t2 * t;
+        out.push([0, 1].map((d) => 0.5 * (2 * p1[d] + (p2[d] - p0[d]) * t + (2 * p0[d] - 5 * p1[d] + 4 * p2[d] - p3[d]) * t2 + (3 * p1[d] - 3 * p2[d] + p3[d] - p0[d]) * t3)));
+      }
+    }
+    return out;
+  }
+  // The sketch's head: broad across the brow, hollow at the cheek, tapering to a long jaw and a heavy chin.
+  const HEAD = spline([
+    [1.12, 1.15], [1.42, 0.62], [1.5, 0.22], [1.6, -0.12], [1.44, -0.4], [1.36, -0.66], [1.3, -0.92],
+    [1.22, -1.32], [0.85, -1.66], [0.2, -1.55], [-0.5, -1.3], [-1.02, -0.9], [-1.42, -0.2], [-1.56, 0.5], [-1.0, 1.3], [0.1, 1.55],
+  ]);
   const rot = (x, y, a) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
   const bone = (a, b, w0, w1) => ribbon(densify([a, b], 0.1, false), (u) => lerp(w0, w1, u));
 
@@ -333,8 +350,8 @@
       this._drawArm(ctx, pose, 0);
       this._drawLeg(ctx, pose, 0);
       this._drawHairBack(ctx, pose);
+      this._drawLeg(ctx, pose, 1);   // the near leg goes under the torso, so the shirt hangs over the top of the thigh
       this._drawTorso(ctx, pose);
-      this._drawLeg(ctx, pose, 1);
       this._drawNeck(ctx, pose);
       this._drawHead(ctx, pose);
       this._drawArm(ctx, pose, 1);
@@ -361,11 +378,31 @@
     }
 
     _drawTorso(ctx, pose) {
-      // Trousers at the hip, then the shirt over them.
+      const sp = pose.spine, seg = G.torso / 12;
+      const shirtW = (u) => 1.5 + 0.85 * Math.sin(Math.PI * clamp(u * 0.8 + 0.1, 0, 1));   // u along the whole spine, 0..1
+
+      // 1. Trousers: a hips block and a black section up the lower torso (drawn first, the shirt hangs over it).
+      //    It starts a little below the spine and its lower end is rounded (a quarter ellipse over the extension),
+      //    so the seat has no square corner.
       this._shape(ctx, circle(pose.hip[0], pose.hip[1], 0.72, 28), 'hips', PAL.pants, false);
-      this._shape(ctx, ribbon(pose.spine, (u) => 1.5 + 0.85 * Math.sin(Math.PI * clamp(u * 0.8 + 0.1, 0, 1))), 'torso', PAL.shirt);
-      // A fold of shade down the back to give the hump some depth.
-      const back = pose.spine.map((p, k) => [p[0] - 0.42 * Math.sin(Math.PI * Math.min(1, k / 12 * 0.9 + 0.05)), p[1]]);
+      const waist = 2, ext = 0.95, L = waist * seg + ext, r = ext / L;
+      const d0 = [sp[1][0] - sp[0][0], sp[1][1] - sp[0][1]], dl = Math.hypot(d0[0], d0[1]) || 1;
+      const start = [sp[0][0] - (d0[0] / dl) * ext, sp[0][1] - (d0[1] / dl) * ext];
+      const pw = (u) => shirtW(Math.max(0, (u * L - ext) / seg) / 12);   // exactly the shirt's width, so no rim shows past it
+      this._shape(ctx, ribbon(densify([start, ...sp.slice(0, waist + 1)], 0.07, false),
+        (u) => pw(u) * (u < r ? Math.sqrt(Math.max(0, 1 - Math.pow((r - u) / r, 2))) * 0.94 + 0.06 : 1), false), 'waist', PAL.pants);
+
+      // 2. The shirt goes over the trousers and hangs right down over the hips: the hem is a little below the bottom of
+      //    the spine, so only the seat and legs show as black.  Flat hem; round shoulders from a circle at the top.
+      const hemExt = 0.3;
+      const hs = [sp[0][0] - (d0[0] / dl) * hemExt, sp[0][1] - (d0[1] / dl) * hemExt];
+      const SL = 12 * seg + hemExt;
+      this._shape(ctx, ribbon(densify([hs, ...sp], 0.1, false), (u) => shirtW(Math.max(0, u * SL - hemExt) / seg / 12), false), 'torso', PAL.shirt);
+      const top = sp[12];
+      this._shape(ctx, circle(top[0], top[1], shirtW(1) / 2, 32), 'shoulders', PAL.shirt, false);
+
+      // 3. A fold of shade down the back of the shirt to give the hump some depth.
+      const back = sp.map((p, k) => [p[0] - 0.42 * Math.sin(Math.PI * Math.min(1, k / 12 * 0.9 + 0.05)), p[1]]);
       this._shape(ctx, ribbon(back.slice(1, 11), (u) => 0.32 * Math.sin(Math.PI * u) + 0.04), 'torsoShade', PAL.shirtShade, false);
     }
 
@@ -408,11 +445,24 @@
       ctx.save();
       ctx.translate(hc[0], hc[1]);
       ctx.rotate(pose.psi);
-      // head, ear, nose
-      this._shape(ctx, ellipse(0, 0, G.headRx, G.headRy, 56), 'head', PAL.skin);
-      this._shape(ctx, ellipse(-0.62, -0.14, 0.28, 0.4, 20), 'ear', PAL.skinShade, false);
-      this._shape(ctx, ellipse(G.headRx - 0.1, -0.1, 0.26, 0.3, 20), 'nose', PAL.skin, false);
+      // skull and jaw, with a darker hollow under the cheekbone running down toward the jaw (no ear is drawn)
+      this._shape(ctx, HEAD, 'head', PAL.skin);
+      this._shape(ctx, ribbon(densify([[0.12, 0.05], [-0.18, -0.3], [-0.36, -0.72], [-0.32, -1.12]], 0.06, false), (u) => 0.46 * Math.sin(Math.PI * (0.1 + 0.8 * u)) + 0.03), 'cheek', PAL.skinShade, false);
+      // dark bangs hanging from under the brim, and strands at the temple
+      for (let k = 0; k < 6; k++) {
+        const bx = -0.6 + 0.4 * k, len = 0.2 + 0.07 * ((k * 5) % 3), sw = 0.03 * Math.sin(TAU * 0.4 * this.t + k);
+        this._shape(ctx, ribbon([[bx, 0.55], [bx + 0.02, 0.45 - len * 0.4], [bx + 0.04 + sw, 0.5 - len]], (u) => 0.13 * (1 - 0.75 * u)), `bang${k}`, PAL.hair, false);
+      }
+      // sideburn strands hanging beside the eye area, thicker than the bangs and curling slightly forward
+      for (let k = 0; k < 4; k++) {
+        const x0 = -0.95 + 0.17 * k, len = 0.8 - 0.1 * k, sw = 0.03 * Math.sin(TAU * 0.4 * this.t + 2 * k);
+        this._shape(ctx, ribbon([[x0, 0.55], [x0 - 0.06 + sw, 0.55 - len * 0.55], [x0 + 0.05 + sw, 0.55 - len]], (u) => 0.16 * (1 - 0.7 * u)), `temple${k}`, PAL.hair, false);
+      }
       this._drawEyes(ctx);
+      // two small dark nostrils under the tip of the nose (a slanted pair, as in the sketch)
+      for (let k = 0; k < 2; k++) {
+        this._shape(ctx, ellipse(1.4 - 0.2 * k, -0.34 - 0.02 * k, 0.05, 0.095, 14).map(([x, y]) => { const r = rot(x - (1.4 - 0.2 * k), y - (-0.34 - 0.02 * k), -0.45); return [1.4 - 0.2 * k + r[0], -0.34 - 0.02 * k + r[1]]; }), `nostril${k}`, PAL.nostril, false);
+      }
       this._drawMouth(ctx);
       // cap (wobbles a little on the head)
       ctx.save();
@@ -424,47 +474,49 @@
       ctx.restore();
     }
 
+    // The cap from the sketch: a tall, slightly squared crown, a whiter front panel with a shaded back, and a thin
+    // off-white brim at the front that runs only a little way past the face.
     _drawCap(ctx) {
-      // dome: the upper half of an oval on a slightly curved base line, then the brim and the brain.
+      const cx = 0.05, base = 0.5, rx = 1.68, ry = 1.9, ex = 2.5;    // superellipse: exponent 2.5 squares the shoulders
       const dome = [];
-      for (let k = 0; k <= 36; k++) { const a = Math.PI * (k / 36); dome.push([1.65 * Math.cos(a), 0.62 + 1.15 * Math.sin(a)]); }
-      dome.push([-1.65, 0.56], [-0.8, 0.5], [0.8, 0.5], [1.65, 0.56]);
+      for (let k = 0; k <= 48; k++) {
+        const a = Math.PI * (k / 48), c = Math.cos(a), sn = Math.sin(a);
+        dome.push([cx + rx * Math.sign(c) * Math.pow(Math.abs(c), 2 / ex), base + ry * Math.pow(sn, 2 / ex)]);
+      }
       this._shape(ctx, densify(dome, 0.1), 'dome', PAL.cap);
-      this._shape(ctx, ribbon([[-1.62, 0.56], [0, 0.48], [1.62, 0.56]], 0.16), 'band', PAL.capShade, false);
+      // whiter front panel (the emblem sits on it) and a shaded crescent down the back of the crown
+      const panel = dome.filter((p) => p[0] > -0.3).map((p) => [p[0] * 0.97, base + (p[1] - base) * 0.96]);
+      panel.push([cx + rx * 0.97, base + 0.02], [-0.3, base + 0.02]);
+      this._shape(ctx, densify(panel, 0.1), 'panel', PAL.capPanel, false);
+      this._shape(ctx, ribbon(dome.filter((p) => p[0] < -0.6).map((p) => [p[0] + 0.28, p[1] - 0.12]), (u) => 0.5 * Math.sin(Math.PI * (0.1 + 0.8 * u))), 'capBack', PAL.capShade, false);
       // brim
-      this._shape(ctx, ribbon([[1.15, 0.7], [1.85, 0.66], [2.6, 0.4]], (u) => 0.34 - 0.09 * u), 'brim', PAL.brim);
-      // the brain emblem on the front panel
+      // brim: thickest where it meets the crown, tapering to a near point at the front (no rounded end cap)
+      this._shape(ctx, ribbon(densify([[0.45, base + 0.03], [1.3, base - 0.04], [2.3, base - 0.17]], 0.08, false), (u) => 0.03 + 0.31 * Math.pow(1 - u, 0.85), false), 'brim', PAL.brim);
+      // the brain: a small pink lump with a cream highlight, folds and a drip, left of centre on the front panel
       ctx.save();
-      ctx.translate(0.85, 1.0);
-      ctx.scale(1.25, 1.25);
-      ctx.rotate(-0.25);
+      ctx.translate(0.62, 1.32);
+      ctx.rotate(-0.1);
+      ctx.scale(0.95, 0.95);
       this._shape(ctx, EMBLEM, 'emblem', PAL.emblem, false);
+      this._shape(ctx, ellipse(-0.1, 0.1, 0.24, 0.15, 18), 'emblemHi', PAL.emblemHi, false);
       EMBLEM_FOLDS.forEach((f, k) => this._shape(ctx, f, `fold${k}`, PAL.emblemDeep, false));
+      this._shape(ctx, ribbon([[0.3, -0.3], [0.32, -0.55]], (u) => 0.12 * (1 - 0.3 * u)), 'brainDrip', PAL.emblem, false);
+      this._shape(ctx, circle(0.32, -0.58, 0.07, 12), 'brainDrop', PAL.emblem, false);
       ctx.restore();
     }
 
     _drawEyes(ctx) {
       const P = this.p;
       const blink = this._blinkT >= 0 ? Math.sin(Math.PI * clamp(this._blinkT / P.blinkDur, 0, 1)) : 0;
-      for (let i = 0; i < 2; i++) {
+      for (const i of [1, 0]) {   // near eye first, far eye drawn over it
         const side = i ? 1 : -1, e = EYE[i];
         const c0 = clamp(0.55 + P.lidUp - side * P.lidAsym, 0, 1), c = c0 + (1 - c0) * blink;
         const hh = lerp(0.25, 0.04, c) * P.eyeScale, rx = e.rx * P.eyeScale;
         ctx.save();
         ctx.translate(e.x, e.y);
         ctx.rotate(-P.lidTilt * side * 0.3);
-        const white = this._shape(ctx, ellipse(0, 0, rx, hh, 32), 'eye' + i, PAL.lid, false);
-        if (hh > 0.09 && P.pupil > 0.05) {
-          ctx.save();
-          this._clip(ctx, white);
-          const p = this._pupil[i];
-          this._shape(ctx, circle(p[0] * rx * 0.45, p[1] * hh * 0.4 - 0.02, 0.11 * P.pupil), 'pupil' + i, PAL.pupil, false);
-          ctx.restore();
-        }
-        const lower = [], upper = [];
-        for (let k = 0; k <= 14; k++) { const a = Math.PI * (k / 14); lower.push([-rx * Math.cos(a), -hh * Math.sin(a)]); upper.push([-rx * Math.cos(a), hh * Math.sin(a)]); }
-        this._shape(ctx, ribbon(lower, (u) => 0.05 + 0.04 * Math.sin(Math.PI * u)), 'lash' + i, PAL.lash, false);
-        this._shape(ctx, ribbon(upper, (u) => 0.07 * Math.sin(Math.PI * u) + 0.02), 'lid' + i, PAL.lash, false);
+        // plain white eyes: no pupils and no dark outline (the sketch draws them as blank white slits)
+        this._shape(ctx, ellipse(0, 0, rx, hh, 32), 'eye' + i, PAL.lid, false);
         ctx.restore();
       }
     }
@@ -521,7 +573,7 @@
     emotions: Bluemark.EMOTIONS,
     triggers: Bluemark.TRIGGERS,
     gestures: [],
-    defaults: { x: 0.65, y: 0.85, scale: 0.02, facing: 'left' },
+    defaults: { x: 0.65, y: 0.85, scale: 0.03, facing: 'left' },   // 3% of frame height per unit: 50% larger than Brian's 2%
     panels: [{
       title: 'Gestures',
       controls: [

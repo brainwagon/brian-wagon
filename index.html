@@ -78,6 +78,8 @@
   const cur = () => scene.get(curId);
   const META = (id) => RigRegistry.get(id).META;
   const sizeToScale = () => (+$('size').value / 100) * H / 10;
+  // The size slider sets Brian's size; each character is scaled by its own default relative to Brian's (2% of frame height).
+  const sizeFor = (id) => sizeToScale() * (META(id).defaults.scale / 0.02);
 
   // The characters shown: one, or every registered one.
   function shownIds() { const v = $('char').value; return v === '*' ? RigRegistry.ids() : [v]; }
@@ -91,7 +93,7 @@
       rigs: ids.map((id) => {
         const o = old[id];
         return {
-          id, type: id, y: H * 0.88, scale: sizeToScale(),
+          id, type: id, y: H * 0.88, scale: sizeFor(id),
           ...(o ? { x: o.x, facing: o.facing, emotion: o.emotion } : { x: META(id).defaults.x * W }),
         };
       }),
@@ -208,7 +210,7 @@
       $(id).oninput = () => {
         $(id + 'Out').textContent = id === 'size' ? $(id).value + '%' : $(id).value;
         for (const r of scene.rigs) {
-          if (id === 'size') r.scale = sizeToScale();
+          if (id === 'size') r.scale = sizeFor(scene.entries.find((e) => e.rig === r).id);
           if (id === 'drift') r.opts.drift = +$(id).value;
           if (id === 'boil') r.opts.boil = +$(id).value;
         }

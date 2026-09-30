@@ -25,11 +25,11 @@ brains and its rope are out of scope: he is the zombie only.
 | Skin | `#5AA0D8` | far-side limbs and neck `#3F7FB8` |
 | Shirt | `#F4F1EA` | shade `#D3CEC1` (far arm, back fold) |
 | Trousers | `#1E1E27` | far leg `#14141B`; shoes `#0E0E13` |
-| Cap | `#F8F6F0` | band `#D9D4C7`, brim `#EAE6DB` |
-| Brain emblem | `#EF6F9C` | folds `#C4457A` |
+| Cap | `#F4F2EC` | front panel `#FBFAF6`, back shade `#CFC9BE`, brim `#E3DFD4` (off-white, a shade darker than the crown) |
+| Brain emblem | `#EE8FA8` | highlight `#F7CDB8`, folds `#B8456F` |
 | Blood | `#A8252B` | drip at the mouth corner |
-| Hair | `#20222B` | six stringy strokes behind the head |
-| Eye lids | `#F4F1EA` | lash and lid lines `#1B2B3A`; teeth `#F1E8C8`; mouth inside `#3A1518` |
+| Hair | `#20222B` | six stringy strokes behind the head, six short bangs under the brim, four sideburn strands beside the face |
+| Eyes | `#F4F1EA` | white only, no pupil or outline; nostrils `#1B2033`; teeth `#F1E8C8`; mouth inside `#3A1518` |
 
 ## Geometry (rig units)
 Origin **between the feet at ground contact, a little behind his centre of mass** (`pelvisX = -1.0`) so mirroring him
@@ -38,14 +38,15 @@ looks steady; +y up; drawn facing right. About 10 units tall (head top at about 
 | Piece | Value |
 |---|---|
 | Legs | thigh 2.1, shin 2.05, shoe about 1.6 long; the pelvis drops each frame so the lower foot touches y = 0 |
-| Torso | 2.7 long, leans forward 47° from vertical, back hump 0.55, width about 1.5-2.35 (a ribbon along a curved spine) |
+| Torso | 2.7 long, leans forward 47° from vertical, back hump 0.55, width about 1.5-2.35 (a ribbon along a curved spine); the shirt hangs right down over the hips (flat hem 0.3 below the bottom of the spine) like an untucked shirt, so only the seat and legs show as black |
 | Neck | 0.5, at the top of the spine |
-| Head | ellipse 1.5 × 1.58, hanging forward of the shoulders, pitched down by `headDrop` |
+| Head | a spline outline (`HEAD`): broad across the brow, hollow under the cheekbone, tapering to a long jaw and a heavy chin, about 3 wide × 3.2 tall, hanging forward of the shoulders, pitched down by `headDrop`; a darker cheek hollow curves down from the cheekbone toward the jaw; no ear is drawn |
 | Arms | upper 2.0, fore 2.0, hand ellipse 0.62; shoulder joint at 92% up the spine |
-| Cap | dome 1.65 × 1.15 on a 0.5 base line, brim 1.15 → 2.6 forward, emblem 1.25× on the front panel |
+| Cap | a tall, slightly squared crown (superellipse, 3.4 wide, 1.9 high on a 0.5 base line) with a whiter front panel and a shaded crescent down the back; an off-white brim at the front only (it does not run round the back of the head) that reaches about 0.75 past the face, thickest at the crown and tapering to a near point; the brain emblem (0.95×) left of centre on the panel, with a cream highlight, folds and a drip |
 
-Draw order, back to front: far arm, far leg, hair, torso (hips block, shirt, back-fold shade), near leg, neck, head
-(ear, nose, eyes, mouth, then the cap, which wobbles on the head), near arm (with a contact shade so it separates
+Draw order, back to front: far arm, far leg, hair, near leg, torso (hips block, the black trouser section, then the shirt over it with its back-fold shade, hanging over the top of the thighs), neck, head
+(skull, the cheek hollow, two dark nostrils, mouth, dark bangs and four sideburn strands, eyes with the near eye first and the far eye over it,
+then the cap, which wobbles on the head), near arm (with a contact shade so it separates
 from the shirt). Every shape has an id prefixed `bm.` so its boil and brush seeds differ from Brian's.
 
 ## Secondary motion
@@ -71,11 +72,11 @@ from the shirt). Every shape has an id prefixed `bm.` so its boil and brush seed
   one-time warning.
 
 ## Eyes
-Two white almond eyes (far and near) under heavy lids, with a dark lash line and a dark upper-lid line and a small
-pupil that shows when the lid is open enough. `lidUp` shifts the closure (base 0.55), `lidAsym` and `lidTilt` skew
-the lids, and a blink is slow (0.32 s). Gaze, dart, diverge and tremble come from the shared base class; the head
-also pitches slightly toward what he is looking at. Look-at targets work as for Brian, including
-`lookAt: {who: "brian"}` in a Scene.
+Two plain white almond eyes (far and near) under heavy lids, as in the sketch: **no pupils and no dark outline or lash
+lines**. `lidUp` shifts the closure (base 0.55), `lidAsym` and `lidTilt` skew the lids, and a blink is slow (0.32 s).
+Because there are no pupils, gaze is read from the head: it pitches slightly toward what he is looking at, and
+look-at targets still work as for Brian (including `lookAt: {who: "brian"}` in a Scene). The pupil parameters
+(`pupil`, `gazeX`, `dartRate`, ...) are still blended by the base class but nothing draws them.
 
 ## Emotions
 Same 20 names as Brian. Each is a preset over `NEUTRAL`; the body keys are the new ones.
@@ -119,7 +120,7 @@ b.cue({...}); b.update(dt); b.draw(target?, { x, y, scale }); b.headWorld();
 ```
 `chomp` is a quick three-times snap of the jaw; `stagger` is a shove into the torso, head, cap and arm springs.
 `Bluemark.META` (registered as `bluemark`) carries the emotion and trigger lists, the defaults (x 65%, y 85%,
-2% of frame height, facing left) and the preview panels and keys (`H` hop, `B` blink, `C` chomp, `T` stagger).
+3% of frame height per unit, which is 50% larger than Brian's 2%, facing left) and the preview panels and keys (`H` hop, `B` blink, `C` chomp, `T` stagger).
 
 ## Output pipeline
 Same as Brian's: a cue file with a `rigs` entry of `"type": "bluemark"` (see `cues/bluemark-demo.json`,
@@ -135,7 +136,7 @@ Interview of 2026-09-29:
 
 ## Still open
 - The brush (p5.brush) look of his face and cap has not been tuned.
-- Proportions and the emblem are first-pass; compare against the sketch at close-up sizes.
+- The head and cap were reworked against the sketch (2026-09-29); the rest of the body is still first-pass, and the sketch is a three-quarter view that is adapted here to a profile.
 - Hands are plain ovals (no fingers). The far arm and leg are flat shade colours.
 - No sound effects for him (footsteps, groans) in `tools/make-audio.py`.
 - `twitch` and `chompRate` are declared but not yet used by any preset.
